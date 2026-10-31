@@ -56,10 +56,19 @@ Old single-mode configuration files are migrated in memory: top-level
 ## Admin API
 
 All admin routes live under `/admin/api` and require `x-admin-token` when the
-panel password is set.
+panel password is set. The header may carry the password itself or a session id
+returned by the login route.
+
+The password is mandatory. Until one exists, every route except the setup write
+(`POST /admin/api/config` with an `admin.token`), a config read and the public
+state answers `428 password_required`. The panel uses that state to show the
+setup screen instead of the login screen.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| GET | `/admin/api/public` | Version, whether a password exists, config paths (no auth, loopback only) |
+| POST | `/admin/api/login` | Exchange the panel password for a one-hour session |
+| POST | `/admin/api/logout` | Drop the current session |
 | GET | `/admin/api/config` | Current config, secrets masked |
 | POST | `/admin/api/config` | Merge and save a partial config |
 | GET | `/admin/api/config/export` | Portable config without secrets |

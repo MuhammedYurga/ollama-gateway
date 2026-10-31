@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- First-run setup: the panel opens without a password and asks you to choose
+  one before any other admin action is unlocked.
+- A real sign-in screen instead of the browser prompt, showing where the
+  password is stored so a locked-out operator can find it.
+- Panel sessions: one sign-in lasts one hour, the browser keeps the session id
+  in `sessionStorage`, and the password itself is never stored there.
+- `/admin/api/public`, `/admin/api/login` and `/admin/api/logout`. Wrong
+  passwords are throttled for a minute per address.
+
 - English-first admin panel with a full Turkish translation and browser
   language detection, switchable from the header.
 - Model discovery from the upstream `/api/tags` list, with family, parameter
@@ -49,6 +58,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The gateway no longer generates and prints a random panel password. A config
+  file is created without one and the first visit sets it.
+- Admin routes answer `428` until a panel password exists; only the setup write
+  and a config read are allowed before that.
 - CLI output, server messages, configuration warnings and admin API errors are
   English.
 - The system addon header is now `# STYLE INSTRUCTIONS (gateway addon)`.

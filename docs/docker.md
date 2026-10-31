@@ -21,16 +21,14 @@ Or with Compose:
 docker compose up -d
 ```
 
-The first start creates `/data/config.json`, generates a random panel password
-and prints it once:
+The first start creates `/data/config.json` without a panel password. Open
+`http://127.0.0.1:8799/admin`: the panel asks you to choose a password before
+anything else is unlocked, then signs you in for an hour.
 
-```bash
-docker logs ollama-gateway | grep "generated admin password"
-```
-
-Open `http://127.0.0.1:8799/admin` and sign in with that password. The image
-does not run as `--bind 0.0.0.0` unless a panel password exists, so a fresh
-container can never start with an open panel.
+The image does not run as `--bind 0.0.0.0` unless a panel password exists, so a
+fresh container never starts with an open panel on the network. That is why the
+first run needs one browser visit on loopback: it is the step that sets the
+password the bind guard requires.
 
 ## Data
 

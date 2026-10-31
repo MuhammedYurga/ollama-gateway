@@ -86,8 +86,8 @@ launchctl bootout gui/$(id -u)/com.ollama-gateway
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ollama-gateway.plist
 ```
 
-The panel password is printed to `/tmp/ollama-gateway.log` only when the config
-file is created for the first time.
+The config file is created without a panel password; open the panel once and it
+asks you to choose one. That happens on the first visit, not in the log.
 
 ## Ollama
 

@@ -106,14 +106,19 @@ docker run -d --name ollama-gateway -p 127.0.0.1:8799:8799 \
 Build, Compose and the container security model are in
 [docs/docker.md](docs/docker.md).
 
-On first start with no configuration file, the gateway creates one, generates a
-random admin password, and prints it once:
+On first start with no configuration file, the gateway creates one without a
+panel password. The panel then opens on a setup screen and asks you to choose
+one before anything else is unlocked:
 
 ```
-[config] panel sifresi olusturuldu: <random>
-proxy: http://127.0.0.1:8799
-panel: http://127.0.0.1:8799/admin  (sifreli)
+[config] no panel password yet; open the panel to set one
+gateway: http://127.0.0.1:8799
+panel:   http://127.0.0.1:8799/admin  (a password is set on first open)
 ```
+
+The password is stored in `admin.token` in the configuration file. After one
+sign-in the panel holds a session for one hour, kept in `sessionStorage`, so
+closing the tab signs you out.
 
 ## Quick start
 
@@ -347,7 +352,12 @@ manager when you no longer need them.
   `Origin`; configuration writes require `Content-Type: application/json`.
   This blocks cross-site request forgery and DNS rebinding from a browser.
 - The admin token is accepted only in the `x-admin-token` header, never in a
-  query string.
+  query string. The header may carry the password itself or a signed-in session.
+- The panel password is mandatory: until it is set, every admin route except
+  the setup write and a config read answers `428`.
+- Sign-in returns a session that expires after one hour; the browser keeps the
+  session id, not the password. Repeated wrong passwords are throttled for a
+  minute per address.
 - The panel keeps the password in `sessionStorage`, so closing the tab signs you
   out. Use the "oturumu kapat" button to clear it immediately.
 - Client `Authorization` and `x-api-key` headers are never forwarded upstream.
