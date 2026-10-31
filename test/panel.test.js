@@ -40,9 +40,11 @@ test('every element the panel script looks up exists in the markup', () => {
 });
 
 test('every tab has a panel section', () => {
-  const tabs = [...js.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
-  for (const id of ['overview', 'models', 'filters', 'style', 'logs', 'settings']) {
-    assert.ok(tabs.includes(id), 'tab missing from the script list: ' + id);
+  const literal = js.match(/const TABS = \[([^\]]+)\]/);
+  assert.ok(literal, 'the TABS literal is missing');
+  const tabs = [...literal[1].matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
+  assert.deepEqual(tabs, ['overview', 'models', 'filters', 'style', 'logs', 'settings']);
+  for (const id of tabs) {
     assert.match(html, new RegExp('id="s-' + id + '"'), 'section missing: ' + id);
     assert.match(html, new RegExp('id="tab-' + id + '"'), 'tab button missing: ' + id);
   }

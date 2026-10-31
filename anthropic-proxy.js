@@ -271,10 +271,25 @@ function sanitizeConfig(raw) {
     const cl = c.cloud;
     if (typeof cl.baseUrl === 'string' && cl.baseUrl.trim()) {
       const b = cl.baseUrl.trim().replace(/\/+$/, '');
-      d.cloud.baseUrl = /^https?:\/\//i.test(b) ? b : 'https://' + b;
-      if (!parseBaseUrl(d.cloud.baseUrl)) {
+      const candidate = /^https?:\/\//i.test(b) ? b : 'https://' + b;
+      const parsed = parseBaseUrl(candidate);
+      if (!parsed) {
         warn.push('cloud base URL was invalid, the default was restored');
         d.cloud.baseUrl = DEFAULTS.cloud.baseUrl;
+      } else if (parsed.proto === 'http' && !isLoopbackHost(parsed.hostname)) {
+        // A plain-http cloud address would send the API key in clear text.
+        warn.push('cloud base URL must use https unless it points at loopback; the default was restored');
+        d.cloud.baseUrl = DEFAULTS.cloud.baseUrl;
+      } else {
+        try {
+          const u = new URL(candidate);
+          if (u.username || u.password) warn.push('credentials were removed from the cloud base URL');
+          u.username = '';
+          u.password = '';
+          d.cloud.baseUrl = u.toString().replace(/\/+$/, '');
+        } catch (_) {
+          d.cloud.baseUrl = candidate;
+        }
       }
     }
     if (typeof cl.apiKey === 'string') d.cloud.apiKey = cl.apiKey.trim();
@@ -461,6 +476,11 @@ function loadConfig(cfgPath) {
 function isCloud(c) { return !!c && c.mode === 'cloud'; }
 
 function activeSection(c) { return isCloud(c) ? c.cloud : c.local; }
+
+function isLoopbackHost(host) {
+  const h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
+  return h === 'localhost' || h === '::1' || /^127\./.test(h);
+}
 
 function parseBaseUrl(raw) {
   try {
@@ -650,7 +670,18 @@ function clearModelCache() {
 // Anthropic client that sends tool definitions fails differently depending on
 // whether the mapped model supports them.
 const MODEL_INFO_TTL_MS = 5 * 60 * 1000;
+const MODEL_INFO_MAX = 256;
 const modelInfoCache = new Map();
+
+function pruneModelInfoCache() {
+  const now = Date.now();
+  for (const [key, entry] of modelInfoCache) {
+    if ((now - entry.at) >= MODEL_INFO_TTL_MS) modelInfoCache.delete(key);
+  }
+  while (modelInfoCache.size > MODEL_INFO_MAX) {
+    modelInfoCache.delete(modelInfoCache.keys().next().value);
+  }
+}
 
 function fetchModelInfo(c, name) {
   const cacheKey = upstreamKey(c) + '|' + name;
@@ -659,7 +690,11 @@ function fetchModelInfo(c, name) {
   return new Promise((resolve) => {
     const body = Buffer.from(JSON.stringify({ model: name }), 'utf8');
     const done = (info) => {
-      modelInfoCache.set(cacheKey, { at: Date.now(), info });
+      // Failures are not cached: the model may simply still be loading.
+      if (info.ok) {
+        modelInfoCache.set(cacheKey, { at: Date.now(), info });
+        pruneModelInfoCache();
+      }
       resolve(info);
     };
     try {
@@ -719,6 +754,12 @@ function sendTestMessage(c, modelHint) {
       messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
     }), 'utf8');
     const startedAt = Date.now();
+    // The upstream body is shown in the panel; strip the key in case a
+    // misconfigured or hostile base URL echoes it back.
+    const scrub = (text) => {
+      const s = String(text == null ? '' : text);
+      return c.cloud.apiKey ? s.split(c.cloud.apiKey).join('[redacted]') : s;
+    };
     const done = (ok, extra) => resolve({ ok, model, latencyMs: Date.now() - startedAt, ...extra });
     try {
       const rq = upstreamRequest(c, {
@@ -742,11 +783,11 @@ function sendTestMessage(c, modelHint) {
             const block = Array.isArray(j.content) ? j.content.find((b) => b && b.type === 'text') : null;
             sample = block && typeof block.text === 'string' ? block.text.slice(0, 200) : '';
           } catch (_) { sample = text.slice(0, 200); }
-          if (r.statusCode >= 400) return done(false, { status: r.statusCode, error: text.slice(0, 300) });
-          done(true, { status: r.statusCode, sample });
+          if (r.statusCode >= 400) return done(false, { status: r.statusCode, error: scrub(text.slice(0, 300)) });
+          done(true, { status: r.statusCode, sample: scrub(sample) });
         });
       });
-      rq.on('error', (e) => done(false, { status: 0, error: e.message }));
+      rq.on('error', (e) => done(false, { status: 0, error: scrub(e.message) }));
       rq.end(body);
     } catch (e) { done(false, { status: 0, error: e.message }); }
   });
@@ -1457,10 +1498,15 @@ function handleImportConfig(req, res) {
       return sendJson(res, 400, { ok: false, error: 'the imported file must contain a config object' });
     }
     const { config, warnings } = sanitizeConfig(source);
-    if (!config.cloud.apiKey) config.cloud.apiKey = current.cloud.apiKey;
+    // A stored key belongs to the host it was entered for. If the file points
+    // the gateway at another host, carrying the key over would hand it to the
+    // author of that file, so the key has to be entered again.
+    const hostChanged = config.cloud.baseUrl !== current.cloud.baseUrl;
+    if (!config.cloud.apiKey && !hostChanged) config.cloud.apiKey = current.cloud.apiKey;
+    if (!config.cloud.apiKey && hostChanged && current.cloud.apiKey) {
+      warnings.push('the cloud base URL changed; the stored API key was not carried over');
+    }
     if (!config.admin.token) config.admin.token = current.admin.token;
-    if (source.clearApiKey === true) config.cloud.apiKey = '';
-    if (source.clearAdminToken === true) config.admin.token = '';
     const changed = configDiff(current, config);
     if (!saveConfigFile(config)) {
       return sendJson(res, 500, { ok: false, error: 'could not write the config file' });
@@ -1530,7 +1576,9 @@ function handleAdmin(req, res) {
           ok: true,
           version: VERSION,
           mode: c.mode,
-          port: c.port,
+          port: LISTEN_PORT || c.port,
+          configPort: c.port,
+          restartRequired: !!(LISTEN_PORT && c.port !== LISTEN_PORT),
           configPath: CFG_FILE,
           dataDir: DATA_DIR,
           uptimeSec: Math.floor((Date.now() - stats.startedAt) / 1000),
@@ -1647,7 +1695,9 @@ function handleRequest(req, res) {
       upstream: upstreamLabel(c),
       routes: activeSection(c).modelMap,
       fallback: activeSection(c).fallbackModel,
-      port: c.port,
+      port: LISTEN_PORT || c.port,
+      configPort: c.port,
+      restartRequired: !!(LISTEN_PORT && c.port !== LISTEN_PORT),
       panel: '/admin',
     }));
   }

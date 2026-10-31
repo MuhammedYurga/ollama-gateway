@@ -48,6 +48,25 @@ test('legacy local config is migrated', () => {
   assert.deepEqual(config.systemAddon, ['keep']);
 });
 
+test('a plain http cloud URL is only accepted for loopback', () => {
+  const remote = sanitizeConfig({ cloud: { baseUrl: 'http://example.test' } });
+  assert.equal(remote.config.cloud.baseUrl, DEFAULTS.cloud.baseUrl);
+  assert.ok(remote.warnings.some((w) => /https unless/.test(w)));
+
+  const loop = sanitizeConfig({ cloud: { baseUrl: 'http://127.0.0.1:9000' } });
+  assert.equal(loop.config.cloud.baseUrl, 'http://127.0.0.1:9000');
+  assert.deepEqual(loop.warnings, []);
+
+  const localhost = sanitizeConfig({ cloud: { baseUrl: 'http://localhost:9001' } });
+  assert.equal(localhost.config.cloud.baseUrl, 'http://localhost:9001');
+});
+
+test('credentials embedded in the cloud URL are stripped', () => {
+  const { config, warnings } = sanitizeConfig({ cloud: { baseUrl: 'https://user:pass@ollama.com' } });
+  assert.equal(config.cloud.baseUrl, 'https://ollama.com');
+  assert.ok(warnings.some((w) => /credentials were removed/.test(w)));
+});
+
 test('legacy cloud config is migrated', () => {
   const { config } = sanitizeConfig({
     port: 8788,

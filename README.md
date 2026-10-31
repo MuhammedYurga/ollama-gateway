@@ -340,6 +340,10 @@ manager when you no longer need them.
   out. Use the "oturumu kapat" button to clear it immediately.
 - Client `Authorization` and `x-api-key` headers are never forwarded upstream.
   Cloud mode replaces them with the configured Ollama key.
+- A configuration import that changes the cloud base URL does not carry the
+  stored API key over, and an imported file cannot clear a secret. A plain
+  `http` cloud address is accepted only for loopback, because the key would
+  otherwise travel unencrypted.
 - The configuration file is written with mode `0600` where the platform supports
   it. On Windows the key is plain text in `%APPDATA%`; protect the account.
 - Request bodies are limited to 32 MB; admin configuration bodies to 2 MB.

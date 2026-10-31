@@ -258,6 +258,15 @@ test('admin config hides the API key and the panel password', async () => {
   });
 });
 
+test('status reports the listening port separately from the configured port', async () => {
+  await withProxy({}, async ({ port }) => {
+    const j = JSON.parse((await request(port, '/admin/api/status')).body);
+    assert.equal(j.port, port);
+    assert.equal(j.configPort, 8799);
+    assert.equal(j.restartRequired, true);
+  });
+});
+
 test('admin auth accepts only the header token', async () => {
   await withProxy({ admin: { token: 'panel-pw' } }, async ({ port }) => {
     assert.equal((await request(port, '/admin/api/config')).status, 401);
@@ -385,6 +394,27 @@ test('model discovery lists upstream models, sorts them and caches the result', 
   }
 });
 
+test('cloud model discovery sends the bearer key and never the client headers', async () => {
+  const up = await startUpstream((req, res) => {
+    if (req.url === '/api/tags') return jsonResponse(res, { models: [{ name: 'cloud-model' }] });
+    jsonResponse(res, {});
+  });
+  try {
+    await withProxy({
+      mode: 'cloud',
+      cloud: { baseUrl: 'http://127.0.0.1:' + up.port, apiKey: 'cloud-key', modelMap: {}, fallbackModel: 'cloud-model' },
+    }, async ({ port }) => {
+      const j = JSON.parse((await request(port, '/admin/api/models?refresh=1')).body);
+      assert.deepEqual(j.models.map((m) => m.name), ['cloud-model']);
+      const seen = up.seen.find((s) => s.url === '/api/tags');
+      assert.equal(seen.headers.authorization, 'Bearer cloud-key');
+      assert.equal(seen.headers['x-api-key'], undefined);
+    });
+  } finally {
+    await closeServer(up.server);
+  }
+});
+
 test('model discovery reports an upstream failure without throwing', async () => {
   const up = await startUpstream((req, res) => {
     res.writeHead(500, { 'content-type': 'application/json' });
@@ -415,15 +445,15 @@ test('config export never includes the API key or the panel password', async () 
   });
 });
 
-test('config import applies the file, keeps stored secrets and reports the change', async () => {
-  await withProxy({ cloud: { apiKey: 'keep-me' } }, async ({ port }) => {
+test('config import applies a file and keeps the stored key for the same host', async () => {
+  await withProxy({ cloud: { apiKey: 'keep-me' }, admin: { token: 'pw' } }, async ({ port }) => {
     const r = await request(port, '/admin/api/config/import', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-admin-token': 'pw' },
       body: JSON.stringify({
         config: {
           mode: 'cloud',
-          cloud: { baseUrl: 'https://example.test', modelMap: { 'claude-opus-5': 'y' }, fallbackModel: 'y' },
+          cloud: { baseUrl: 'https://ollama.com', modelMap: { 'claude-opus-5': 'y' }, fallbackModel: 'y' },
         },
       }),
     });
@@ -431,14 +461,31 @@ test('config import applies the file, keeps stored secrets and reports the chang
     assert.equal(r.status, 200);
     assert.equal(j.ok, true);
     assert.equal(j.config.mode, 'cloud');
-    assert.equal(j.config.cloud.baseUrl, 'https://example.test');
     assert.deepEqual(j.config.cloud.modelMap, { 'claude-opus-5': 'y' });
     assert.equal(j.config.cloud.apiKeySet, true, 'the stored key survives an import without one');
+    assert.equal(j.config.admin.tokenSet, true, 'an imported file cannot clear the panel password');
+    assert.equal(j.warnings.some((w) => /not carried over/.test(w)), false);
     assert.ok(j.changed.includes('mode'));
-    assert.ok(j.changed.includes('cloud'));
 
     const health = JSON.parse((await request(port, '/health')).body);
     assert.equal(health.mode, 'cloud');
+  });
+});
+
+test('config import drops the stored key when the cloud host changes', async () => {
+  await withProxy({ cloud: { apiKey: 'keep-me' } }, async ({ port }) => {
+    const r = await request(port, '/admin/api/config/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: { cloud: { baseUrl: 'https://example.test', modelMap: { 'claude-opus-5': 'y' }, fallbackModel: 'y' } },
+      }),
+    });
+    const j = JSON.parse(r.body);
+    assert.equal(r.status, 200);
+    assert.equal(j.config.cloud.baseUrl, 'https://example.test');
+    assert.equal(j.config.cloud.apiKeySet, false, 'the key is not sent to a new host');
+    assert.ok(j.warnings.some((w) => /not carried over/.test(w)));
   });
 });
 

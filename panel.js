@@ -158,6 +158,8 @@ const STR = {
     'conn.connected': 'connected',
     'conn.down': 'not connected',
     'conn.unknown': '?',
+    'conn.signedOut': 'signed out',
+    'settings.restartRequired': 'The configuration sets port {p}, but the gateway is listening on {l}. Restart it to apply the change.',
     'uptime.hm': '{h}h {m}m',
     'uptime.m': '{m}m',
     'status.count': 'count',
@@ -318,6 +320,8 @@ const STR = {
     'conn.connected': 'bağlı',
     'conn.down': 'bağlı değil',
     'conn.unknown': '?',
+    'conn.signedOut': 'oturum kapalı',
+    'settings.restartRequired': 'Ayar dosyası {p} portunu yazıyor ama geçit {l} portunu dinliyor. Değişiklik için yeniden başlat.',
     'uptime.hm': '{h} sa {m} dk',
     'uptime.m': '{m} dk',
     'status.count': 'sayım',
@@ -374,6 +378,7 @@ function applyLang(next, persist) {
   });
   document.title = 'ollama-gateway';
   localizeRows();
+  refreshSecretPlaceholders();
   renderUpstreamResult();
   if (cfg) { renderSnippet(); refreshStatus(); renderModelsTable(); updateMapHints(); applyModeUI(); }
 }
@@ -383,8 +388,8 @@ function applyLang(next, persist) {
 function localizeRows() {
   document.querySelectorAll('#mrows .mrow').forEach((row) => {
     const inputs = row.querySelectorAll('input');
-    if (inputs[0]) inputs[0].placeholder = t('models.source');
-    if (inputs[1]) inputs[1].placeholder = t('models.target');
+    if (inputs[0]) { inputs[0].placeholder = t('models.source'); inputs[0].setAttribute('aria-label', t('models.source')); }
+    if (inputs[1]) { inputs[1].placeholder = t('models.target'); inputs[1].setAttribute('aria-label', t('models.target')); }
     const del = row.querySelector('.del');
     if (del) { del.textContent = t('models.delete'); del.setAttribute('aria-label', t('models.delete')); }
   });
@@ -401,15 +406,29 @@ function localizeRows() {
 
 // ---- transport ----
 
+let authBlocked = false;
+
 async function api(ep, o = {}, retry = true) {
+  const init = { ...o };
+  const silent = init.silent === true;
+  delete init.silent;
   const h = { 'content-type': 'application/json' };
   const tok = sessionStorage.getItem('gwToken');
   if (tok) h['x-admin-token'] = tok;
-  const r = await fetch(ep, { ...o, headers: h });
-  if (r.status === 401 && retry) {
+  const r = await fetch(ep, { ...init, headers: h });
+  if (r.status === 401) {
+    // A background poll must never open a blocking prompt every few seconds.
+    if (silent || authBlocked || !retry) {
+      authBlocked = true;
+      throw new Error('admin password required');
+    }
     const p = prompt(t('prompt.password'));
-    if (p === null) throw new Error(t('common.error', { e: 'HTTP 401' }));
+    if (p === null) {
+      authBlocked = true;
+      throw new Error('admin password required');
+    }
     sessionStorage.setItem('gwToken', p);
+    authBlocked = false;
     return api(ep, o, false);
   }
   if (!r.ok) {
@@ -436,8 +455,9 @@ function guard(fn) {
 }
 
 async function postConfig(partial) {
-  if (partial) cfg = { ...cfg, ...partial };
-  const r = await api('/admin/api/config', { method: 'POST', body: JSON.stringify(cfg) });
+  // Send only the changed sections: the server merges them into the live
+  // config, so a second panel tab cannot overwrite a section it never edited.
+  const r = await api('/admin/api/config', { method: 'POST', body: JSON.stringify(partial || {}) });
   cfg = r.config;
   if (r.warnings && r.warnings.length) toast(t('common.savedWarn', { w: r.warnings.join(' | ') }), false);
   else toast(t('common.saved'));
@@ -464,9 +484,19 @@ function timeOf(iso) {
   try { return new Date(iso).toLocaleTimeString(lang === 'tr' ? 'tr-TR' : 'en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); } catch (_) { return ''; }
 }
 
-async function refreshStatus() {
+async function refreshStatus(silent) {
   try {
-    const s = await api('/admin/api/status');
+    const s = await api('/admin/api/status', silent ? { silent: true } : {});
+    if (s.port && s.port !== listeningPort) {
+      listeningPort = s.port;
+      renderSnippet();
+    }
+    if ($('portWarn')) {
+      $('portWarn').hidden = !s.restartRequired;
+      if (s.restartRequired) {
+        $('portWarn').textContent = t('settings.restartRequired', { p: s.configPort, l: s.port });
+      }
+    }
     chip($('cMode'), modeWord(s.mode), 'mode');
     const up = s.upstream.up;
     chip($('cUpstream'), (s.upstream.label || 'upstream') + ' · ' + (up === true ? t('conn.connected') : up === false ? t('conn.down') : t('conn.unknown')),
@@ -500,11 +530,12 @@ async function refreshStatus() {
       '</tr>').join('');
     $('tbody').innerHTML = rows || '<tr><td class="empty" colspan="8">' + esc(t('recent.empty')) + '</td></tr>';
   } catch (e) {
-    chip($('cUpstream'), t('common.error', { e: e.message }), 'bad');
+    chip($('cUpstream'), authBlocked ? t('conn.signedOut') : t('common.error', { e: e.message }), 'bad');
   }
 }
 
 let lastStatus = null;
+let listeningPort = null;
 
 function updateSetup() {
   const card = $('setupCard');
@@ -545,7 +576,7 @@ function setDot(id, state) {
 
 function renderSnippet() {
   if (!cfg) return;
-  const port = cfg.port || 8799;
+  const port = listeningPort || cfg.port || 8799;
   const map = (cfg[cfg.mode] || {}).modelMap || {};
   const model = Object.keys(map)[0] || 'claude-opus-5';
   $('snippet').textContent = [
@@ -839,6 +870,12 @@ function applyModeUI() {
   }
 }
 
+function refreshSecretPlaceholders() {
+  if (!cfg) return;
+  $('clKey').placeholder = cfg.cloud.apiKeySet ? t('settings.replaceKey') : t('settings.apiKeyPh');
+  $('pwToken').placeholder = cfg.admin.tokenSet ? t('settings.replacePassword') : t('settings.adminPasswordPh');
+}
+
 function fillSettings() {
   if (!cfg) return;
   $('tFixOn').checked = cfg.titleFix.enabled;
@@ -857,14 +894,13 @@ function fillSettings() {
   $('olPort').value = cfg.local.port;
   $('clUrl').value = cfg.cloud.baseUrl;
   $('clKey').value = '';
-  $('clKey').placeholder = cfg.cloud.apiKeySet ? t('settings.replaceKey') : t('settings.apiKeyPh');
   $('clKeyState').textContent = cfg.cloud.apiKeySet ? t('settings.stored') : t('settings.notStored');
   $('clKeyClear').checked = false;
   $('pxPort').value = cfg.port;
 
   $('pwToken').value = '';
-  $('pwToken').placeholder = cfg.admin.tokenSet ? t('settings.replacePassword') : t('settings.adminPasswordPh');
   $('pwTokenState').textContent = cfg.admin.tokenSet ? t('settings.stored') : t('settings.notStored');
+  refreshSecretPlaceholders();
   $('pwTokenClear').checked = false;
   $('pwTokenClearRow').hidden = !cfg.admin.tokenSet;
   $('cLogout').hidden = !cfg.admin.tokenSet;
@@ -874,9 +910,9 @@ function fillSettings() {
 
 // ---- logs ----
 
-async function refreshLog() {
+async function refreshLog(silent) {
   try {
-    const r = await api('/admin/api/log?lines=' + $('logLines').value);
+    const r = await api('/admin/api/log?lines=' + $('logLines').value, silent ? { silent: true } : {});
     $('logTail').textContent = r.lines.join('\n') || t('logs.empty');
     $('logNote').textContent = t('logs.lineCount', { n: r.lines.length });
   } catch (e) {
@@ -884,9 +920,9 @@ async function refreshLog() {
   }
 }
 
-async function refreshCaptures() {
+async function refreshCaptures(silent) {
   try {
-    const r = await api('/admin/api/captures');
+    const r = await api('/admin/api/captures', silent ? { silent: true } : {});
     $('capInfo').textContent = t('captures.info', { n: r.files.length, s: fmt(r.total) }) + (r.paused ? t('captures.paused') : '');
   } catch (e) {
     $('capInfo').textContent = t('logs.readError', { e: e.message });
@@ -942,6 +978,7 @@ function exportConfig() {
 
 function afterConfigSwap(next) {
   cfg = next;
+  modelInfo.clear();
   fillSettings();
   renderModels();
   renderRules();
@@ -1007,6 +1044,7 @@ $('mmSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   modelMode = b.dataset.m;
+  modelInfo.clear();
   renderModels();
 });
 
@@ -1100,8 +1138,9 @@ $('sSave').addEventListener('click', guard(async () => {
   await postConfig(patch);
   if (newToken) sessionStorage.setItem('gwToken', newToken);
   if (patch.clearAdminToken) sessionStorage.removeItem('gwToken');
+  authBlocked = false;
+  modelInfo.clear();
   fillSettings();
-  renderModels();
   renderSnippet();
   refreshStatus();
   loadModels(true);
@@ -1166,8 +1205,8 @@ async function init() {
   refreshLog();
   loadModels(false);
   setInterval(() => {
-    refreshStatus();
-    if (tab === 'logs' && $('logAuto').checked) refreshLog();
+    refreshStatus(true);
+    if (tab === 'logs' && $('logAuto').checked) refreshLog(true);
   }, 5000);
 }
 

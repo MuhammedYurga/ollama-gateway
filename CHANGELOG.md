@@ -31,6 +31,18 @@ All notable changes to this project are documented here. The format follows
   sanitizer warnings, and exits without starting a listener or touching the
   file.
 
+### Security
+
+- A configuration import that points the gateway at a different cloud host no
+  longer carries the stored API key over, and imported files cannot clear the
+  API key or the panel password.
+- Cloud base URLs must use https unless they point at loopback; credentials
+  embedded in the URL are stripped.
+- The test message redacts the API key from any upstream error text.
+- Model capability results are bounded and failures are not cached.
+- Panel background polling never reopens the password prompt; a stale session
+  shows a signed-out state instead.
+
 ### Changed
 
 - CLI output, server messages, configuration warnings and admin API errors are
