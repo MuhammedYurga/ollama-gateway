@@ -40,7 +40,11 @@ resell access, or add a telemetry layer.
 - Per-mode model maps: the model name your client sends (for example
   `claude-opus-5`) is translated to an Ollama model you choose.
 - A browser admin panel at `http://127.0.0.1:8799/admin` for connection mode,
-  model maps, logging, filters and status.
+  model maps, logging, filters and status. English first, with a Turkish
+  translation and browser language detection.
+- Model discovery: the panel lists what the upstream actually serves, validates
+  your map against it and can send one test message end to end.
+- Configuration export and import (without secrets) and a safe reset.
 - Streams are passed through byte-for-byte; the gateway does not rewrite the
   response body.
 
@@ -65,8 +69,11 @@ resell access, or add a telemetry layer.
 ## Platforms
 
 Windows, macOS and Linux with Node.js 20 or newer. The CI matrix runs Ubuntu and
-Windows. Windows launchers are included; a systemd user service example for
-Linux is in [docs/linux.md](docs/linux.md).
+Windows. Windows launchers are included.
+
+Per-platform setup: [docs/linux.md](docs/linux.md) (systemd user service),
+[docs/macos.md](docs/macos.md) (launchd agent),
+[docs/windows.md](docs/windows.md) (start at sign-in, service).
 
 ## Install
 
@@ -119,8 +126,9 @@ key is sent as `Authorization: Bearer`; the gateway does this for you and never
 forwards the client's `x-api-key`.
 
 Cloud availability and limits depend on your Ollama plan; local models depend
-on your hardware. The admin panel is in Turkish; the HTTP API and the
-configuration file are language-neutral.
+on your hardware. The admin panel is English by default and follows the browser
+language, with an EN/TR switch; the HTTP API and the configuration file are
+language-neutral.
 
 ### Option A: Local Ollama daemon (local and cloud models)
 
@@ -204,6 +212,35 @@ Any client that can target an Anthropic-compatible base URL should work. Some
 desktop builds expose a gateway or custom-provider setting; availability and
 support vary by version and plan. Check the client's documentation and terms
 before changing it.
+
+Concrete recipes for Claude Code, Continue, Cline and a plain `curl` check are
+in [docs/clients.md](docs/clients.md).
+
+## Admin panel
+
+The panel is the normal way to configure the gateway. It has six tabs:
+
+| Tab | What it is for |
+| --- | --- |
+| Overview | Setup checklist, live counters, a copy-ready client snippet, recent requests |
+| Models | Per-mode model maps, upstream model discovery, map validation |
+| Filters | Local request filters that answer without calling the upstream |
+| Style addon | Instructions appended to every system prompt |
+| Logs | usage-log tail and capture files |
+| Settings | Connection, port, panel password, request fixes, logging, config file |
+
+The overview tab runs three checks: whether the upstream answers, whether a
+model is mapped, and whether a test message comes back. **Discover models**
+reads `/api/tags` from the active upstream and marks any map target it does not
+know, so a typo surfaces before a client hits it.
+
+**Export config** writes JSON without the API key or the panel password.
+**Import config** accepts that file and keeps the stored secrets when the file
+does not carry them. **Reset to defaults** restores the neutral defaults and
+either keeps or rotates the panel password, so the panel is never left open.
+
+The panel is keyboard navigable (arrow keys move between tabs) and usable on a
+phone-sized screen.
 
 ## Configuration
 

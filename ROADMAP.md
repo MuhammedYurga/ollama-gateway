@@ -37,20 +37,20 @@ way. It is not a model host, a reseller, or a hosted service.
 - npm package, CI on Node 20/22/24, publish workflow with provenance.
 - Test suite with a fake upstream and security regression tests.
 
-## 0.2 Global UX (next)
+## 0.2 Global UX (in progress)
 
 - **English-first admin panel** with Turkish preserved: language toggle and
-  browser auto-detection. English CLI output and error messages.
+  browser auto-detection. English CLI output and error messages. *(done)*
 - Model discovery: list upstream models, validate a map, show a capability
-  hint instead of guessing.
-- Config import/export and a safe "reset to defaults" action.
+  hint instead of guessing. *(done; family, parameter size, quantization)*
+- Config import/export and a safe "reset to defaults" action. *(done)*
 - Screenshots, a short demo, and a documentation site.
 - Docker image with an explicit auth model (loopback is not enough inside a
   container; the admin surface needs a documented design before shipping it).
 - Package channels: Homebrew, winget, Scoop.
 - Client recipes for Claude Code, Cline, Continue and other
-  Anthropic-compatible tools.
-- Accessibility pass and a mobile-friendly panel.
+  Anthropic-compatible tools. *(done: docs/clients.md)*
+- Accessibility pass and a mobile-friendly panel. *(done)*
 
 ## 0.3 Any backend
 
@@ -97,14 +97,16 @@ way. It is not a model host, a reseller, or a hosted service.
 
 ### v0.2.0: global launch
 
-- [ ] English-first panel with EN/TR toggle
-- [ ] English CLI output and errors
+- [x] English-first panel with EN/TR toggle
+- [x] English CLI output and errors
+- [x] Model discovery and map validation
+- [x] Config import, export and reset
+- [x] Client recipes: Claude Code, Cline, Continue
+- [x] Accessibility and mobile layout pass
 - [ ] Screenshots and a short demo
 - [ ] Documentation site
 - [ ] Docker image with an explicit auth model
 - [ ] Homebrew, winget and Scoop packages
-- [ ] Client recipes: Claude Code, Cline, Continue
-- [ ] Accessibility and mobile layout pass
 
 ### v0.3.0: adapters and routing
 

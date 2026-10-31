@@ -53,6 +53,31 @@ script, user config directory. Runtime data goes next to the config file unless
 Old single-mode configuration files are migrated in memory: top-level
 `ollamaHost` becomes `local`, top-level `apiKey` becomes `cloud`.
 
+## Admin API
+
+All admin routes live under `/admin/api` and require `x-admin-token` when the
+panel password is set.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/admin/api/config` | Current config, secrets masked |
+| POST | `/admin/api/config` | Merge and save a partial config |
+| GET | `/admin/api/config/export` | Portable config without secrets |
+| POST | `/admin/api/config/import` | Replace the config from a file |
+| POST | `/admin/api/config/reset` | Restore defaults, keep or rotate secrets |
+| GET | `/admin/api/status` | Version, uptime, upstream health, counters |
+| GET | `/admin/api/models` | Upstream model list from `/api/tags`, 30 s cache |
+| POST | `/admin/api/test-message` | One round trip through the active map |
+| GET | `/admin/api/log` | usage-log tail |
+| POST | `/admin/api/log/clear` | Empty the usage log |
+| GET | `/admin/api/captures` | Capture file list and size |
+| POST | `/admin/api/captures/clear` | Delete the capture files |
+| POST | `/admin/api/upstream/check` | Health probe used by the panel |
+
+Model discovery is advisory. A target the upstream does not report is
+highlighted in the panel but never blocked, because a map may point at a model
+that is still downloading.
+
 ## Security boundaries
 
 - The listener binds `127.0.0.1`.

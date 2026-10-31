@@ -6,6 +6,33 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- English-first admin panel with a full Turkish translation and browser
+  language detection, switchable from the header.
+- Model discovery from the upstream `/api/tags` list, with family, parameter
+  size, quantization and size, cached for 30 seconds.
+- Map validation: a target that the upstream does not list is highlighted
+  before it reaches a client.
+- One-click test message that goes through the active model map and reports the
+  latency and the first characters of the reply.
+- Setup checklist on the overview tab and a copy-ready client snippet for
+  macOS, Linux and Windows.
+- Configuration export and import without secrets, and a reset that keeps or
+  rotates the panel password.
+- Panel keyboard navigation, screen-reader labels, a skip link and a mobile
+  layout.
+- Client recipes for Claude Code, Continue and generic Anthropic-compatible
+  clients, a macOS launchd guide and a Windows service guide.
+
+### Changed
+
+- CLI output, server messages, configuration warnings and admin API errors are
+  English.
+- The system addon header is now `# STYLE INSTRUCTIONS (gateway addon)`.
+- Recent request rows use the stable status tokens `count`, `block` and
+  `error` instead of display strings.
+
 ## [0.1.0] - 2026-10-31
 
 ### Added
