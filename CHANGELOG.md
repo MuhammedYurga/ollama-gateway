@@ -27,6 +27,9 @@ All notable changes to this project are documented here. The format follows
   layout.
 - Client recipes for Claude Code, Continue and generic Anthropic-compatible
   clients, a macOS launchd guide and a Windows service guide.
+- `--check-config` validates the resolved configuration, prints the routes and
+  sanitizer warnings, and exits without starting a listener or touching the
+  file.
 
 ### Changed
 

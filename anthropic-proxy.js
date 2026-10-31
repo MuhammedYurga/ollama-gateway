@@ -173,6 +173,7 @@ function usage() {
     '  --data-dir <dir>   Directory for logs and captures (default: config file directory)',
     '  --port <number>    Gateway port (default 8799)',
     '  --mode <mode>      local | cloud',
+    '  --check-config     Validate the configuration file and exit',
     '  -h, --help         Show this help',
     '  -v, --version      Print the version',
     '',
@@ -181,7 +182,7 @@ function usage() {
 }
 
 function parseArgs(argv) {
-  const out = { config: null, dataDir: null, port: null, mode: null, help: false, version: false };
+  const out = { config: null, dataDir: null, port: null, mode: null, checkConfig: false, help: false, version: false };
   const value = (i, name) => {
     if (i + 1 >= argv.length) throw new Error(name + ' requires a value');
     return argv[i + 1];
@@ -190,6 +191,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '-h' || a === '--help') out.help = true;
     else if (a === '-v' || a === '--version') out.version = true;
+    else if (a === '--check-config') out.checkConfig = true;
     else if (a === '--config') { out.config = value(i, '--config'); i++; }
     else if (a.startsWith('--config=')) out.config = a.slice('--config='.length);
     else if (a === '--data-dir') { out.dataDir = value(i, '--data-dir'); i++; }
@@ -331,6 +333,32 @@ function sanitizeConfig(raw) {
     if (typeof c.admin.token === 'string') d.admin.token = c.admin.token.trim();
   }
   return { config: d, warnings: warn };
+}
+
+// Read-only validation used by --check-config: it never writes, migrates the
+// file on disk or starts a listener.
+function checkConfigFile(cfgPath) {
+  let raw;
+  try {
+    raw = fs.readFileSync(cfgPath, 'utf8');
+  } catch (e) {
+    return {
+      ok: false,
+      missing: e.code === 'ENOENT',
+      path: cfgPath,
+      error: 'could not read the file: ' + (e.code || e.message),
+      warnings: [],
+      config: null,
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    return { ok: false, path: cfgPath, error: 'invalid JSON: ' + e.message, warnings: [], config: null };
+  }
+  const { config, warnings } = sanitizeConfig(parsed);
+  return { ok: true, path: cfgPath, error: '', warnings, config };
 }
 
 function saveConfigFile(c) {
@@ -1647,6 +1675,30 @@ function main() {
   if (args.version) { console.log(VERSION); return; }
 
   const paths = resolvePaths(args);
+  if (args.checkConfig) {
+    const r = checkConfigFile(paths.cfgPath);
+    console.log('config: ' + r.path);
+    if (r.missing) {
+      console.log('no configuration file yet; it will be created on the first start');
+      return;
+    }
+    if (!r.ok) {
+      console.log('[error] ' + r.error);
+      process.exitCode = 1;
+      return;
+    }
+    const c = r.config;
+    const section = activeSection(c);
+    console.log('mode:    ' + c.mode + '  (' + upstreamLabel(c) + ')');
+    console.log('port:    ' + c.port);
+    console.log('routes:  ' + Object.keys(section.modelMap).length + ' mapping(s), fallback ' + section.fallbackModel);
+    for (const [k, v] of Object.entries(section.modelMap)) console.log('  ' + k + ' -> ' + v);
+    console.log('cloud api key:  ' + (c.cloud.apiKey ? 'set' : 'missing'));
+    console.log('panel password: ' + (c.admin.token ? 'set' : 'missing'));
+    for (const w of r.warnings) console.log('[warning] ' + w);
+    console.log(r.warnings.length ? 'valid, with warnings' : 'ok');
+    return;
+  }
   setPaths(paths.dataDir);
   loadConfig(paths.cfgPath);
 
@@ -1713,6 +1765,7 @@ module.exports = {
   setPaths,
   normalizeLegacy,
   sanitizeConfig,
+  checkConfigFile,
   mergeDeep,
   cleanModelMap,
   cfgNum,

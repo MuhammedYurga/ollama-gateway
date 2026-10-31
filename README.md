@@ -294,9 +294,15 @@ ollama-gateway [options]
   --data-dir <path>  Directory for logs and captures
   --port <number>    Gateway port (default 8799)
   --mode <mode>      local | cloud
+  --check-config     Validate the configuration file and exit
   -h, --help         Show help
   -v, --version      Show version
 ```
+
+`--check-config` reads the resolved configuration, prints the active mode, the
+routes, whether the secrets are set and every sanitizer warning, then exits
+without starting a listener. It never rewrites the file, so it is safe to run
+before a restart or from CI.
 
 Environment variables: `PROXY_CFG`, `PROXY_DATA_DIR`, `PROXY_PORT`,
 `PROXY_MODE`, `OLLAMA_API_KEY`.

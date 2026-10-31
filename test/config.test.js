@@ -2,10 +2,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   DEFAULTS,
   sanitizeConfig,
+  checkConfigFile,
   mergeDeep,
   parseBaseUrl,
   resolveModelFor,
@@ -165,6 +169,54 @@ test('block matcher honours enabled, max_tokens and system marker', () => {
   assert.equal(matchBlock({ max_tokens: 64, system: 'has marker' }, c), 'hit');
   assert.equal(matchBlock({ max_tokens: 32, system: 'has marker' }, c), null);
   assert.equal(matchBlock({ max_tokens: 64, system: 'other' }, c), null);
+});
+
+test('config check reads a file without rewriting it', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-check-'));
+  const file = path.join(dir, 'config.json');
+  const original = JSON.stringify({ mode: 'cloud', cloud: { apiKey: 'k', modelMap: { a: 'b' } } }, null, 2);
+  fs.writeFileSync(file, original);
+  try {
+    const r = checkConfigFile(file);
+    assert.equal(r.ok, true);
+    assert.equal(r.config.mode, 'cloud');
+    assert.equal(r.config.cloud.apiKey, 'k');
+    assert.deepEqual(r.config.cloud.modelMap, { a: 'b' });
+    assert.equal(fs.readFileSync(file, 'utf8'), original, 'the file is not rewritten');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('config check reports invalid JSON and a missing file separately', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-check-'));
+  const bad = path.join(dir, 'bad.json');
+  fs.writeFileSync(bad, '{ nope');
+  try {
+    const r = checkConfigFile(bad);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /invalid JSON/);
+    const missing = checkConfigFile(path.join(dir, 'absent.json'));
+    assert.equal(missing.ok, false);
+    assert.equal(missing.missing, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('config check surfaces sanitizer warnings and still succeeds', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-check-'));
+  const file = path.join(dir, 'config.json');
+  fs.writeFileSync(file, JSON.stringify({ blockRules: [{ name: 'all', enabled: true }] }));
+  try {
+    const r = checkConfigFile(file);
+    assert.equal(r.ok, true);
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.warnings[0], /no condition/);
+    assert.deepEqual(r.config.blockRules, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('system addon keeps cached blocks byte-identical', () => {
