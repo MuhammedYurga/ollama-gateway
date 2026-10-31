@@ -175,7 +175,8 @@ const STR = {
     'gate.missing': 'Enter a password',
     'gate.tooShort': 'Use at least 8 characters',
     'gate.mismatch': 'The two passwords do not match',
-    'gate.hint': 'The password is stored in {p}',
+    'gate.hint': 'The password lives in the admin.token field of the configuration file.',
+    'gate.where': 'Where is the password?',
     'gate.hintSetup': 'At least 8 characters. It is saved to the configuration file.',
     'gate.expired': 'Your session expired, sign in again',
     'gate.offline': 'Could not reach the gateway',
@@ -354,7 +355,8 @@ const STR = {
     'gate.missing': 'Şifre gir',
     'gate.tooShort': 'En az 8 karakter kullan',
     'gate.mismatch': 'İki şifre aynı değil',
-    'gate.hint': 'Şifre burada saklanır: {p}',
+    'gate.hint': 'Şifre, ayar dosyasındaki admin.token alanında duruyor.',
+    'gate.where': 'Şifre nerede?',
     'gate.hintSetup': 'En az 8 karakter. Ayar dosyasına kaydedilir.',
     'gate.expired': 'Oturum süresi doldu, yeniden giriş yap',
     'gate.offline': 'Geçide ulaşılamadı',
@@ -493,7 +495,9 @@ function showGate(mode) {
   $('gateSubmit').textContent = setup ? t('gate.set') : t('gate.signIn');
   $('gateError').hidden = true;
   const path = panelInfo && panelInfo.configPath ? panelInfo.configPath : '';
-  $('gateHint').textContent = setup ? t('gate.hintSetup') : (path ? t('gate.hint', { p: path }) : '');
+  $('gateHint').textContent = setup ? t('gate.hintSetup') : t('gate.hint');
+  $('gatePathBox').hidden = setup || !path;
+  $('gatePath').textContent = path;
   $('gateFoot').textContent = panelInfo ? 'v' + panelInfo.version : '';
   setTimeout(() => { try { $('gatePassword').focus(); } catch (_) {} }, 30);
 }
