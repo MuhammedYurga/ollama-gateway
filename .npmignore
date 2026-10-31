@@ -1,0 +1,15 @@
+# Runtime secrets and data (the "files" field is authoritative; this is defense in depth)
+proxy-config.json
+proxy-config.*.json
+!proxy-config.example.json
+proxy-config.bozuk.json
+usage-log*.txt
+probe-log*.txt
+captures/
+data/
+test/
+.github/
+TASKS.md
+.omc/
+PROXY.bat
+start-proxy.vbs

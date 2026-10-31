@@ -1,0 +1,24 @@
+# Runtime secrets and data: never commit these
+proxy-config*.json
+!proxy-config.example.json
+usage-log*.txt
+probe-log*.txt
+captures/
+data/
+.env
+.env.*
+
+# Private planning and tooling state
+TASKS.md
+.omc/
+
+# Node
+node_modules/
+npm-debug.log*
+*.tgz
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

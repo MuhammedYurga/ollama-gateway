@@ -1,0 +1,42 @@
+{
+  "mode": "local",
+  "port": 8799,
+  "upstreamTimeoutMs": 600000,
+  "local": {
+    "host": "127.0.0.1",
+    "port": 11434,
+    "modelMap": {
+      "claude-opus-5": "qwen3:8b"
+    },
+    "fallbackModel": "qwen3:8b"
+  },
+  "cloud": {
+    "baseUrl": "https://ollama.com",
+    "apiKey": "",
+    "modelMap": {
+      "claude-opus-5": "gpt-oss:120b"
+    },
+    "fallbackModel": "gpt-oss:120b"
+  },
+  "systemAddon": [],
+  "blockRules": [],
+  "titleFix": {
+    "enabled": true,
+    "sysContains": "short session titles",
+    "minTokens": 1024
+  },
+  "countTokens": {
+    "enabled": true,
+    "charsPerToken": 3.3
+  },
+  "logging": {
+    "usageLog": true,
+    "promptHeads": false,
+    "fullCapturePerBucket": 0,
+    "capFileLimit": 400,
+    "probeOutValue": 0
+  },
+  "admin": {
+    "token": ""
+  }
+}

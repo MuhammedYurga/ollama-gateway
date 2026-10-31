@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Gateway Paneli</title>
+<style>
+  :root { --bg:#10141a; --panel:#161c24; --panel2:#1b232d; --line:#262f3a; --tx:#e3e1d8; --mut:#8d97a3; --ac:#e0a458; --ok:#79b791; --bad:#d97066 }
+  * { box-sizing:border-box }
+  [hidden] { display:none !important }
+  body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.55 "Segoe UI",system-ui,sans-serif }
+  .wrap { max-width:1080px; margin:0 auto; padding:22px 22px 70px }
+  .hrow { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap }
+  h1 { font-size:20px; margin:0; font-weight:600 }
+  .sub { color:var(--mut); font-size:12.5px; margin-top:3px }
+  .chips { display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+  .chip { border:1px solid var(--line); background:var(--panel); padding:4px 10px; border-radius:20px; font-size:12px; color:var(--mut) }
+  .chip.ok { color:var(--ok); border-color:rgba(121,183,145,.35) }
+  .chip.bad { color:var(--bad); border-color:rgba(217,112,102,.35) }
+  .chip.mode { color:var(--ac); border-color:rgba(224,164,88,.35) }
+  button.chip { font:inherit; cursor:pointer }
+  button.chip:hover { color:var(--bad); border-color:var(--bad) }
+  .tabs { display:flex; gap:2px; margin-top:18px; border-bottom:1px solid var(--line); flex-wrap:wrap }
+  .tabs button { background:none; border:none; color:var(--mut); padding:9px 14px; font-size:13.5px; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; font:inherit }
+  .tabs button:hover { color:var(--tx) }
+  .tabs button.on { color:var(--tx); border-bottom-color:var(--ac) }
+  section { padding-top:18px }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px }
+  .tile b { display:block; font-size:20px; font-weight:600; font-variant-numeric:tabular-nums }
+  .tile span { color:var(--mut); font-size:11.5px }
+  .note { color:var(--mut); font-size:12px; margin:8px 0 }
+  .lbl { color:var(--mut); font-size:11.5px; margin-bottom:4px }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-top:14px }
+  h2 { font-size:15px; font-weight:600; margin:0 0 8px }
+  table { width:100%; border-collapse:collapse; font-size:13px }
+  th { text-align:left; color:var(--mut); font-weight:500; font-size:11.5px; padding:6px 8px; border-bottom:1px solid var(--line) }
+  td { padding:6px 8px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums }
+  tr:last-child td { border-bottom:none }
+  input,select,textarea { background:var(--panel2); border:1px solid var(--line); color:var(--tx); border-radius:6px; padding:6px 9px; font:inherit; font-size:13px; outline:none; width:100% }
+  input:focus,select:focus,textarea:focus { border-color:var(--ac) }
+  input:focus-visible,button:focus-visible { outline:2px solid var(--ac); outline-offset:1px }
+  textarea { min-height:130px; resize:vertical; line-height:1.5 }
+  button.act { background:var(--ac); border:none; color:#1c130a; font:inherit; font-size:13px; font-weight:600; padding:7px 14px; border-radius:6px; cursor:pointer }
+  button.act:hover { filter:brightness(1.08) }
+  button.ghost { background:var(--panel2); border:1px solid var(--line); color:var(--tx); font:inherit; font-size:12.5px; padding:6px 12px; border-radius:6px; cursor:pointer }
+  button.ghost:hover { border-color:var(--ac) }
+  .rowbtn { display:flex; gap:10px; justify-content:flex-end; margin-top:12px }
+  label.chk { display:flex; gap:8px; align-items:center; color:var(--tx); font-size:13px; cursor:pointer; margin:10px 0 4px }
+  label.chk input { width:auto }
+  .fgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px 16px; margin-top:10px }
+  .mrow { display:flex; gap:8px; margin:8px 0; align-items:center }
+  .mrow input { flex:1 }
+  .mrow .arr { color:var(--mut) }
+  .rrow { display:flex; gap:8px; margin:8px 0; align-items:center; flex-wrap:wrap }
+  .rrow .rn { flex:0 0 160px }
+  .rrow .rmt { flex:0 0 130px }
+  .rrow .rsys { flex:1; min-width:230px }
+  .rrow input[type=checkbox] { width:auto }
+  .del { background:none; border:1px solid var(--line); color:var(--mut); border-radius:6px; cursor:pointer; padding:6px 10px; font:inherit; font-size:12.5px }
+  .del:hover { color:var(--bad); border-color:var(--bad) }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel2); margin-top:6px }
+  .seg button { background:none; border:none; color:var(--mut); padding:8px 18px; font:inherit; font-size:13px; cursor:pointer }
+  .seg button:hover { color:var(--tx) }
+  .seg button.on { background:var(--ac); color:#1c130a; font-weight:600 }
+  pre { background:#0c1015; border:1px solid var(--line); border-radius:8px; padding:12px; font:12px/1.55 ui-monospace,Consolas,monospace; overflow:auto; max-height:400px; white-space:pre-wrap; word-break:break-all; color:#c6cdd6; margin:10px 0 0 }
+  .foot { color:var(--mut); font-size:11.5px; margin-top:24px; text-align:center }
+  .toast { position:fixed; bottom:18px; right:18px; background:var(--panel2); border:1px solid var(--ac); color:var(--tx); padding:9px 14px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:5 }
+  .toast.on { opacity:1 }
+  @media (prefers-reduced-motion: reduce) { .toast { transition:none } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="hrow">
+    <div>
+      <h1>Gateway Paneli</h1>
+      <div class="sub">Anthropic Messages API uyumlu istemcileri Ollama'ya bağlayan yerel geçit. Kaydettiğin ayarlar yeniden başlatmadan uygulanır.</div>
+    </div>
+    <div class="chips">
+      <span class="chip mode" id="cMode">mod ?</span>
+      <span class="chip ok" id="cProxy">proxy çalışıyor</span>
+      <span class="chip" id="cOllama">bağlantı ?</span>
+      <span class="chip" id="cUptime">?</span>
+      <button class="chip" id="cLogout" type="button" hidden>oturumu kapat</button>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-t="genel" class="on">Genel</button>
+  <button data-t="modeller">Modeller</button>
+  <button data-t="engelleme">Engelleme</button>
+  <button data-t="stil">Stil eki</button>
+  <button data-t="loglar">Loglar</button>
+  <button data-t="ayarlar">Ayarlar</button>
+</nav>
+
+<section id="s-genel">
+  <div class="tiles" id="tiles"></div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0">Son istekler</h2>
+      <span class="note" style="margin:0" id="capNote"></span>
+    </div>
+    <table>
+      <thead><tr><th>saat</th><th>mod</th><th>mt</th><th>giriş</th><th>çıkış</th><th>süre</th><th>bucket</th><th>sonuç</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="note">Sayılar proxy başlangıcından beri; bütün geçmiş usage-log.txt'de.</div>
+    <div style="margin-top:10px;gap:10px;display:flex;align-items:center;flex-wrap:wrap">
+      <button class="ghost" id="btnTest">Bağlantıyı test et</button>
+      <span id="testOut" class="note" style="margin:0"></span>
+    </div>
+  </div>
+</section>
+
+<section id="s-modeller" hidden>
+  <div class="card">
+    <h2>Model eşleşmeleri</h2>
+    <div class="note">Sol taraf istemcinin gönderdiği model adı, sağ taraf Ollama'daki gerçek model. Eşleşmeyen adlar yedek modele düşer. Yerel ve bulut haritaları ayrı tutulur.</div>
+    <div class="seg" id="mmSeg">
+      <button data-m="local">Yerel</button>
+      <button data-m="cloud">Bulut</button>
+    </div>
+    <div class="note" id="mmNote"></div>
+    <div id="mrows"></div>
+    <button class="ghost" id="mAdd">Satır ekle</button>
+    <div class="fgrid" style="margin-top:16px">
+      <div>
+        <div class="lbl">Yedek model</div>
+        <input type="text" id="fallback">
+      </div>
+    </div>
+    <div class="rowbtn"><button class="act" id="mSave">Kaydet</button></div>
+  </div>
+</section>
+
+<section id="s-engelleme" hidden>
+  <div class="card">
+    <h2>İstek filtreleri</h2>
+    <div class="note">Kurala uyan istek upstream'e gönderilmez, istemciye boş ama geçerli cevap döner. Varsayılan olarak kapalıdır; yalnızca ne yaptığını bildiğin durumlarda kullan. Dikkat: mt 8192 isteklerini filtreleme, istemci oturumu kendini durdurabilir.</div>
+    <div id="rrows"></div>
+    <button class="ghost" id="rAdd">Kural ekle</button>
+    <div class="rowbtn"><button class="act" id="rSave">Kaydet</button></div>
+  </div>
+</section>
+
+<section id="s-stil" hidden>
+  <div class="card">
+    <h2>Stil eki</h2>
+    <div class="note">Her isteğin system prompt'una eklenen talimatlar. Değiştirirsen bir sonraki istekte önbellek bir kez yeniden kurulur. Varsayılan olarak boştur.</div>
+    <textarea id="addon" placeholder="her satır bir talimat"></textarea>
+    <div class="rowbtn"><button class="act" id="aSave">Kaydet</button></div>
+  </div>
+</section>
+
+<section id="s-loglar" hidden>
+  <div class="card">
+    <h2>usage-log</h2>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <select id="logLines" style="width:auto"><option>200</option><option selected>500</option><option>1000</option></select>
+      <label class="chk" style="margin:0"><input type="checkbox" id="logAuto" checked> otomatik yenile</label>
+      <button class="ghost" id="lgRefresh">Yenile</button>
+      <span class="note" id="logNote" style="margin:0"></span>
+      <button class="ghost" style="margin-left:auto" id="lgClear">Logu temizle</button>
+    </div>
+    <pre id="logTail">yüklüyor...</pre>
+  </div>
+  <div class="card">
+    <h2>Yakalama dosyaları</h2>
+    <div id="capInfo" class="note">-</div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="ghost" id="capRefresh">Yenile</button>
+      <button class="ghost" id="capClear">Tümünü sil</button>
+    </div>
+  </div>
+</section>
+
+<section id="s-ayarlar" hidden>
+  <div class="card">
+    <h2>İstek düzeltmeleri</h2>
+    <label class="chk"><input type="checkbox" id="tFixOn"> Başlık üretimi düzeltmesi (short session titles istekleri)</label>
+    <div class="fgrid">
+      <div><div class="lbl">system içinde geçen</div><input type="text" id="tFixSys"></div>
+      <div><div class="lbl">min token sayısı</div><input type="number" id="tFixMin"></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="ctOn"> count_tokens isteklerini lokal tahminle yanıtla</label>
+    <div class="fgrid">
+      <div><div class="lbl">karakter / token katsayısı</div><input type="number" step="0.1" id="ctFactor"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Loglama</h2>
+    <label class="chk"><input type="checkbox" id="lgOn"> usage-log.txt yazımı</label>
+    <label class="chk"><input type="checkbox" id="lgPrompt"> log satırlarına system ve kullanıcı metni başlarını da yaz (gizlilik riski)</label>
+    <div class="fgrid">
+      <div><div class="lbl">bucket başına tam kayıt (0 kapalı)</div><input type="number" id="lgCap"></div>
+      <div><div class="lbl">captures dosya sınırı (0 yakalama kapalı)</div><input type="number" id="lgLimit"></div>
+      <div><div class="lbl">probe filtresi (0 kapalı)</div><input type="number" id="lgProbe"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Bağlantı yöntemi</h2>
+    <div class="note">İsteklerin hangi Ollama'ya gideceğini seçer. Kaydedince anında geçerli olur, proxy yeniden başlatılmaz.</div>
+    <div class="seg" id="modeSeg">
+      <button data-m="local">Yerel Ollama</button>
+      <button data-m="cloud">Ollama Cloud</button>
+    </div>
+
+    <div id="localFields" class="fgrid">
+      <div><div class="lbl">Ollama adres</div><input type="text" id="olHost" placeholder="127.0.0.1"></div>
+      <div><div class="lbl">Ollama port</div><input type="number" id="olPort" placeholder="11434"></div>
+    </div>
+
+    <div id="cloudFields" class="fgrid" hidden>
+      <div><div class="lbl">Bulut adres</div><input type="text" id="clUrl" placeholder="https://ollama.com"></div>
+      <div>
+        <div class="lbl">API anahtarı <span id="clKeyState"></span></div>
+        <input type="password" id="clKey" autocomplete="off" placeholder="API anahtarı">
+      </div>
+    </div>
+    <label class="chk" id="clKeyClearRow" hidden><input type="checkbox" id="clKeyClear"> Kayıtlı anahtarı sil</label>
+
+    <div class="fgrid" style="margin-top:14px">
+      <div><div class="lbl">Proxy portu (değişince proxy'yi yeniden başlat)</div><input type="number" id="pxPort"></div>
+      <div>
+        <div class="lbl">Panel şifresi <span id="pwTokenState"></span></div>
+        <input type="password" id="pwToken" autocomplete="off" placeholder="panel şifresi (boş = şifresiz)">
+      </div>
+    </div>
+    <label class="chk" id="pwTokenClearRow" hidden><input type="checkbox" id="pwTokenClear"> Kayıtlı panel şifresini sil</label>
+
+    <div class="note" id="modeNote"></div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button class="act" id="sSave">Kaydet</button>
+      <button class="ghost" id="sTest">Bağlantıyı test et</button>
+      <span id="sTestOut" class="note" style="margin:0"></span>
+    </div>
+    <div class="note">Kaydet, bu sekmedeki bütün ayarları (düzeltmeler, loglama, bağlantı) yazar.</div>
+  </div>
+</section>
+
+<div class="foot" id="foot"></div>
+<div class="toast" id="toast"></div>
+<script src="/admin/panel.js"></script>
+</body>
+</html>

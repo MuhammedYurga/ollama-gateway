@@ -1,0 +1,54 @@
+{
+  "name": "ollama-gateway",
+  "version": "0.1.0",
+  "description": "Local gateway that lets Anthropic Messages API clients use Ollama models. Unofficial; not affiliated with Anthropic or Ollama.",
+  "license": "Apache-2.0",
+  "author": "Muhammed Yurga",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MuhammedYurga/ollama-gateway.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MuhammedYurga/ollama-gateway/issues"
+  },
+  "homepage": "https://github.com/MuhammedYurga/ollama-gateway#readme",
+  "type": "commonjs",
+  "main": "anthropic-proxy.js",
+  "bin": {
+    "ollama-gateway": "anthropic-proxy.js"
+  },
+  "files": [
+    "anthropic-proxy.js",
+    "panel.html",
+    "panel.js",
+    "proxy-config.example.json",
+    "README.md",
+    "NOTICE",
+    "LEGAL.md",
+    "SECURITY.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node anthropic-proxy.js",
+    "check": "node --check anthropic-proxy.js && node --check panel.js",
+    "test": "node --test",
+    "prepublishOnly": "npm run check && npm test"
+  },
+  "keywords": [
+    "ollama",
+    "anthropic",
+    "messages-api",
+    "gateway",
+    "proxy",
+    "claude",
+    "local-llm",
+    "llm",
+    "self-hosted"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
