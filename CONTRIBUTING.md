@@ -54,6 +54,42 @@ no Ollama instance or API key is required.
 - Run `npm test` and `npm run check` before opening a pull request.
 - Do not weaken or skip existing tests to make a change pass.
 
+## Branching and releases
+
+`main` is always releasable and receives squashed pull requests from
+short-lived branches. `autopilot` is the single permanent working branch, used
+for long autonomous runs.
+
+Short-lived branches:
+
+- Cut from `main`: `feat/`, `fix/`, `docs/`, `chore/`, `refactor/` or `test/`
+  plus a short slug, lowercase with hyphens, for example `fix/12-stream-abort`.
+- Merged with squash only, then deleted.
+
+`autopilot`:
+
+- Direct pushes are allowed and a pull request is not required.
+- Rebase onto `main` at the start of every run so the branch stays on top of it:
+  `git fetch origin && git rebase origin/main`.
+- Force pushes are allowed there because rebasing requires them; deletion is
+  blocked by a ruleset.
+- Review with `git diff main..autopilot`, then publish with
+  `git push origin autopilot:main`, which is a fast-forward.
+
+Pull requests:
+
+- `main` requires a pull request, a passing `ci-ok` check, linear history and
+  resolved conversations. Force pushes and branch deletion are blocked.
+  Repository administrators can bypass the rules to restore a broken `main`.
+- The pull request title becomes the commit subject, so it follows the same
+  English, passive, short rule.
+
+Releases:
+
+- Annotated tags on `main` named `v0.1.0`. Tags are protected and must not be
+  moved or deleted; the publish workflow runs from the tag.
+- `release/*` branches are created only when an older line needs a fix.
+
 ## Commit messages and pull requests
 
 - Commit messages are English, short and descriptive.
