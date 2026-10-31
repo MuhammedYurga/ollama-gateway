@@ -392,7 +392,8 @@ configuration helpers and start the real server with an ephemeral port.
 The short-term focus is a global, English-first experience; the longer term is a
 provider-neutral gateway for local and cloud model runtimes. See
 [ROADMAP.md](ROADMAP.md) for phases, non-goals and long-term directions,
-[docs/architecture.md](docs/architecture.md) for the request flow, and
+[docs/architecture.md](docs/architecture.md) for the request flow,
+[docs/providers.md](docs/providers.md) for the adapter seam planned for 0.3, and
 [CONTRIBUTING.md](CONTRIBUTING.md) to get involved.
 
 ## Contributing
