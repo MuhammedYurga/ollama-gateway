@@ -21,7 +21,7 @@ function keysIn(section) {
 }
 
 test('every data-i18n key has an English and a Turkish string', () => {
-  const htmlKeys = new Set([...html.matchAll(/data-i18n(?:-ph)?="([^"]+)"/g)].map((m) => m[1]));
+  const htmlKeys = new Set([...html.matchAll(/data-i18n(?:-ph|-aria)?="([^"]+)"/g)].map((m) => m[1]));
   assert.ok(htmlKeys.size > 40, 'the panel should carry a real number of keys');
   const en = keysIn(EN_BLOCK);
   const tr = keysIn(TR_BLOCK);

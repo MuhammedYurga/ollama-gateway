@@ -1531,6 +1531,8 @@ function handleAdmin(req, res) {
           version: VERSION,
           mode: c.mode,
           port: c.port,
+          configPath: CFG_FILE,
+          dataDir: DATA_DIR,
           uptimeSec: Math.floor((Date.now() - stats.startedAt) / 1000),
           upstream: {
             mode: upstreamMode,

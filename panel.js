@@ -149,6 +149,7 @@ const STR = {
     'configCard.importError': 'The file is not valid JSON',
     'configCard.imported': 'Configuration imported',
     'configCard.exported': 'Configuration exported',
+    'configCard.paths': 'Config file: {c}  ·  data directory: {d}',
     'common.save': 'Save',
     'common.saved': 'Saved',
     'common.savedWarn': 'Saved. Warning: {w}',
@@ -307,6 +308,7 @@ const STR = {
     'configCard.importError': 'Dosya geçerli JSON değil',
     'configCard.imported': 'Ayar içe aktarıldı',
     'configCard.exported': 'Ayar dışa aktarıldı',
+    'configCard.paths': 'Ayar dosyası: {c}  ·  veri dizini: {d}',
     'common.save': 'Kaydet',
     'common.saved': 'Kaydedildi',
     'common.savedWarn': 'Kaydedildi. Uyarı: {w}',
@@ -362,6 +364,7 @@ function applyLang(next, persist) {
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
   document.querySelectorAll('#langSeg button').forEach((b) => {
     const on = b.dataset.lang === lang;
     b.classList.toggle('on', on);
@@ -471,6 +474,9 @@ async function refreshStatus() {
     $('cLogout').hidden = !s.adminTokenSet;
     $('verNo').textContent = 'v' + (s.version || '?');
     $('foot').textContent = t('foot.text', { v: s.version || '?' });
+    if (s.configPath) {
+      $('cfgPaths').textContent = t('configCard.paths', { c: s.configPath, d: s.dataDir || '?' });
+    }
     $('capNote').textContent = (s.caps && s.caps.paused) ? t('warn.capsPaused') : '';
     lastStatus = s;
     updateSetup();

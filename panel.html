@@ -282,7 +282,8 @@
     </div>
     <div class="toolbar" style="margin-top:0">
       <input type="search" id="modelFilter" autocomplete="off" style="max-width:320px"
-             data-i18n-ph="discover.filter" placeholder="Filter by name or family">
+             data-i18n-ph="discover.filter" data-i18n-aria="discover.filter"
+             aria-label="Filter by name or family" placeholder="Filter by name or family">
     </div>
     <div class="tablewrap">
       <table id="modelTable">
@@ -434,6 +435,7 @@
   <div class="card">
     <h2 data-i18n="configCard.title">Configuration file</h2>
     <p class="note" data-i18n="configCard.note">Export never includes the API key or the panel password. Import accepts a file produced by Export, or a hand-written config.</p>
+    <p class="note" id="cfgPaths"></p>
     <div class="toolbar">
       <button class="ghost" id="cfgExport" data-i18n="configCard.export">Export config</button>
       <button class="ghost" id="cfgImport" data-i18n="configCard.import">Import config</button>
