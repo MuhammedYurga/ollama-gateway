@@ -10,8 +10,7 @@ All notable changes to this project are documented here. The format follows
 
 - First-run setup: the panel opens without a password and asks you to choose
   one before any other admin action is unlocked.
-- A real sign-in screen instead of the browser prompt, showing where the
-  password is stored so a locked-out operator can find it.
+- A real sign-in screen instead of the browser prompt.
 - Panel sessions: one sign-in lasts one hour, the browser keeps the session id
   in `sessionStorage`, and the password itself is never stored there.
 - `/admin/api/public`, `/admin/api/login` and `/admin/api/logout`. Wrong

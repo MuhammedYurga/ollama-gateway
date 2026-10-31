@@ -286,7 +286,7 @@ test('first run opens only the setup path until a password is set', async () => 
   await withProxy({ admin: { token: '' } }, async ({ port }) => {
     const pub = JSON.parse((await request(port, '/admin/api/public', { auth: false })).body);
     assert.equal(pub.passwordSet, false);
-    assert.equal(typeof pub.configPath, 'string');
+    assert.equal('configPath' in pub, false, 'the public state does not reveal local paths');
 
     assert.equal((await request(port, '/admin/api/models', { auth: false })).status, 428);
     assert.equal((await request(port, '/admin/api/config', { auth: false })).status, 200);

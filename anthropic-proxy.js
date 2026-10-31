@@ -1406,8 +1406,6 @@ function publicInfo(c) {
     version: VERSION,
     passwordSet: !!c.admin.token,
     mode: c.mode,
-    configPath: CFG_FILE,
-    dataDir: DATA_DIR,
   };
 }
 
