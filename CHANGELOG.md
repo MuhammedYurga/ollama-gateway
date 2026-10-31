@@ -14,6 +14,9 @@ All notable changes to this project are documented here. The format follows
   size, quantization and size, cached for 30 seconds.
 - Map validation: a target that the upstream does not list is highlighted
   before it reaches a client.
+- Capability badges for mapped models: `/api/show` is queried for the models in
+  use and a missing tool capability is flagged, because clients such as Claude
+  Code send tool definitions.
 - One-click test message that goes through the active model map and reports the
   latency and the first characters of the reply.
 - Setup checklist on the overview tab and a copy-ready client snippet for

@@ -232,7 +232,8 @@ The panel is the normal way to configure the gateway. It has six tabs:
 The overview tab runs three checks: whether the upstream answers, whether a
 model is mapped, and whether a test message comes back. **Discover models**
 reads `/api/tags` from the active upstream and marks any map target it does not
-know, so a typo surfaces before a client hits it.
+know, so a typo surfaces before a client hits it. Each mapped model also shows
+whether it declares tool support, which Anthropic clients rely on.
 
 **Export config** writes JSON without the API key or the panel password.
 **Import config** accepts that file and keeps the stored secrets when the file

@@ -60,6 +60,8 @@ const STR = {
     'models.mapEmpty': 'No mapping yet. Discover the models and add a row.',
     'models.unknown': '{n} mapping(s) are not in the upstream list',
     'models.ok': 'All mappings match the upstream list',
+    'cap.tools': 'tools',
+    'cap.noTools': 'no tools',
     'discover.title': 'Models on the upstream',
     'discover.caption': 'Models reported by the upstream',
     'discover.name': 'Name', 'discover.family': 'Family', 'discover.params': 'Parameters',
@@ -216,6 +218,8 @@ const STR = {
     'models.mapEmpty': 'Henüz eşleşme yok. Modelleri keşfet ve bir satır ekle.',
     'models.unknown': '{n} eşleşme arka uç listesinde yok',
     'models.ok': 'Bütün eşleşmeler arka uç listesiyle uyuşuyor',
+    'cap.tools': 'araçlar',
+    'cap.noTools': 'araç yok',
     'discover.title': 'Arka uçtaki modeller',
     'discover.caption': 'Arka ucun bildirdiği modeller',
     'discover.name': 'Ad', 'discover.family': 'Aile', 'discover.params': 'Parametre',
@@ -334,6 +338,7 @@ let discovered = [];
 let modelsError = '';
 let modelsCheckedAt = null;
 let modelFilter = '';
+const modelInfo = new Map();
 let lastMessageTest = null;
 
 function detectLang() {
@@ -581,6 +586,7 @@ function renderModels() {
   Object.entries(sec.modelMap || {}).forEach(([k, v]) => addMRow(k, v));
   localizeRows();
   updateMapHints();
+  fetchModelInfoForTargets();
 }
 
 function addMRow(k, v) {
@@ -588,7 +594,8 @@ function addMRow(k, v) {
   row.className = 'mrow';
   row.innerHTML = '<input type="text" list="modelList" autocomplete="off" spellcheck="false">' +
     '<span class="arr" aria-hidden="true">→</span>' +
-    '<input type="text" list="modelList" autocomplete="off" spellcheck="false">' +
+    '<div class="tgt"><input type="text" list="modelList" autocomplete="off" spellcheck="false">' +
+    '<span class="cap" hidden></span></div>' +
     '<button type="button" class="del"></button>';
   const inputs = row.querySelectorAll('input');
   inputs[0].value = k || '';
@@ -637,6 +644,49 @@ function updateMapHints() {
   const el = $('mmStatus');
   el.textContent = text;
   el.className = 'statusline' + (cls ? ' ' + cls : '');
+  renderCaps();
+}
+
+// Capability badges come from /api/show and are fetched only for the models
+// that are actually mapped, so discovery stays cheap.
+function mappedNames() {
+  return [...new Set(currentTargets()
+    .map((inp) => inp.value.trim())
+    .concat([$('fallback').value.trim()])
+    .filter(Boolean))];
+}
+
+function fetchModelInfoForTargets() {
+  const names = mappedNames();
+  const missing = names.filter((n) => !modelInfo.has(n));
+  if (!missing.length) return Promise.resolve();
+  return api('/admin/api/model-info', { method: 'POST', body: JSON.stringify({ models: missing }) })
+    .then((r) => {
+      (r.models || []).forEach((m) => modelInfo.set(m.model, m));
+      renderCaps();
+    })
+    .catch(() => {});
+}
+
+function renderCaps() {
+  document.querySelectorAll('#mrows .mrow').forEach((row) => {
+    const target = row.querySelectorAll('input')[1];
+    const cap = row.querySelector('.cap');
+    if (!cap) return;
+    const info = modelInfo.get(target.value.trim());
+    if (!info) { cap.hidden = true; return; }
+    cap.hidden = false;
+    if (!info.ok) {
+      cap.textContent = '?';
+      cap.className = 'cap warn';
+      cap.title = info.error || '';
+      return;
+    }
+    const tools = info.capabilities.includes('tools');
+    cap.textContent = tools ? t('cap.tools') : t('cap.noTools');
+    cap.className = 'cap ' + (tools ? 'ok' : 'warn');
+    cap.title = info.capabilities.join(', ');
+  });
 }
 
 function renderModelsTable() {
@@ -701,6 +751,7 @@ async function loadModels(refresh) {
   }
   renderModelsTable();
   updateMapHints();
+  fetchModelInfoForTargets();
 }
 
 function useModel(name) {
@@ -709,6 +760,7 @@ function useModel(name) {
   else addMRow('', name);
   localizeRows();
   updateMapHints();
+  fetchModelInfoForTargets();
 }
 
 // ---- filters ----

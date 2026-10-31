@@ -119,6 +119,11 @@
   /* dynamic rows */
   .mrow { display:grid; grid-template-columns:1fr 22px 1fr auto; gap:8px; align-items:center; margin:9px 0 }
   .mrow .arr { color:var(--mut); text-align:center }
+  .mrow .tgt { display:flex; gap:6px; align-items:center; min-width:0 }
+  .mrow .tgt input { flex:1 1 auto; min-width:0 }
+  .cap { font-size:11px; color:var(--mut); white-space:nowrap; padding:2px 7px; border:1px solid var(--line2); border-radius:999px }
+  .cap.ok { color:var(--ok); border-color:rgba(127,191,150,.4) }
+  .cap.warn { color:var(--warn); border-color:rgba(224,178,90,.4) }
   .rrow { display:grid; grid-template-columns:auto 1fr 110px 1.4fr auto; gap:8px; align-items:center; margin:9px 0 }
   .rrow input[type=checkbox] { justify-self:center }
   .del { background:none; border:1px solid var(--line); color:var(--mut); border-radius:7px; cursor:pointer; padding:7px 11px; font:inherit; font-size:12.5px; min-height:36px }

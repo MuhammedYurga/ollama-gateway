@@ -526,6 +526,43 @@ test('the test message endpoint uses the active model map', async () => {
   }
 });
 
+test('model info reports the capabilities the upstream declares', async () => {
+  const up = await startUpstream((req, res, rec) => {
+    if (req.url === '/api/show') {
+      const asked = JSON.parse(rec.body);
+      return jsonResponse(res, {
+        capabilities: asked.model === 'with-tools' ? ['completion', 'tools'] : ['completion'],
+        details: { family: 'demo' },
+      });
+    }
+    jsonResponse(res, {});
+  });
+  try {
+    await withProxy({ local: { port: up.port } }, async ({ port }) => {
+      const r = await request(port, '/admin/api/model-info', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ models: ['with-tools', 'plain', 'with-tools', '  '] }),
+      });
+      const j = JSON.parse(r.body);
+      assert.equal(r.status, 200);
+      assert.deepEqual(j.models.map((m) => m.model), ['with-tools', 'plain']);
+      assert.deepEqual(j.models[0].capabilities, ['completion', 'tools']);
+      assert.equal(j.models[0].family, 'demo');
+      assert.deepEqual(j.models[1].capabilities, ['completion']);
+
+      const empty = await request(port, '/admin/api/model-info', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      assert.equal(empty.status, 400);
+    });
+  } finally {
+    await closeServer(up.server);
+  }
+});
+
 test('the panel ships English defaults with a Turkish translation', async () => {
   await withProxy({}, async ({ port }) => {
     const html = await request(port, '/admin');

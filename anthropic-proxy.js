@@ -615,6 +615,66 @@ function modelsFor(c, refresh) {
 
 function clearModelCache() {
   modelCache = { key: '', at: 0, models: [], error: '', source: '' };
+  modelInfoCache.clear();
+}
+
+// /api/show reports what a model can do. "tools" matters most here: an
+// Anthropic client that sends tool definitions fails differently depending on
+// whether the mapped model supports them.
+const MODEL_INFO_TTL_MS = 5 * 60 * 1000;
+const modelInfoCache = new Map();
+
+function fetchModelInfo(c, name) {
+  const cacheKey = upstreamKey(c) + '|' + name;
+  const hit = modelInfoCache.get(cacheKey);
+  if (hit && (Date.now() - hit.at) < MODEL_INFO_TTL_MS) return Promise.resolve(hit.info);
+  return new Promise((resolve) => {
+    const body = Buffer.from(JSON.stringify({ model: name }), 'utf8');
+    const done = (info) => {
+      modelInfoCache.set(cacheKey, { at: Date.now(), info });
+      resolve(info);
+    };
+    try {
+      const rq = upstreamRequest(c, {
+        path: '/api/show',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': body.length,
+          accept: 'application/json',
+        },
+        timeout: 8000,
+      }, (r) => {
+        const chunks = [];
+        let bytes = 0;
+        r.on('data', (ch) => { if (bytes < 1024 * 1024) { chunks.push(ch); bytes += ch.length; } });
+        r.on('end', () => {
+          let j = null;
+          try { j = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_) {}
+          if (r.statusCode >= 400 || !j) {
+            return done({ model: name, ok: false, capabilities: [], family: '', error: 'HTTP ' + r.statusCode });
+          }
+          const capabilities = Array.isArray(j.capabilities)
+            ? j.capabilities.filter((x) => typeof x === 'string')
+            : [];
+          const details = (j.details && typeof j.details === 'object') ? j.details : {};
+          done({
+            model: name,
+            ok: true,
+            capabilities,
+            family: typeof details.family === 'string' ? details.family : '',
+            parameterSize: typeof details.parameter_size === 'string' ? details.parameter_size : '',
+            error: '',
+          });
+        });
+        r.on('error', () => done({ model: name, ok: false, capabilities: [], family: '', error: 'upstream read error' }));
+      });
+      rq.on('error', (e) => done({ model: name, ok: false, capabilities: [], family: '', error: e.message }));
+      rq.end(body);
+    } catch (e) {
+      done({ model: name, ok: false, capabilities: [], family: '', error: e.message });
+    }
+  });
 }
 
 // A one-shot round trip through the active upstream and model map. Used by the
@@ -1499,6 +1559,20 @@ function handleAdmin(req, res) {
         readJsonBody(req, res, 64 * 1024, (body) => {
           const hint = body && typeof body.model === 'string' ? body.model.trim() : '';
           return void sendTestMessage(c, hint).then((r) => sendJson(res, 200, { ok: true, ...r }));
+        });
+        return;
+      }
+      if (api === '/admin/api/model-info') {
+        readJsonBody(req, res, 64 * 1024, (body) => {
+          const names = (body && Array.isArray(body.models)) ? body.models : [];
+          const list = [...new Set(names
+            .filter((n) => typeof n === 'string' && n.trim())
+            .map((n) => n.trim()))].slice(0, 12);
+          if (!list.length) {
+            return sendJson(res, 400, { ok: false, error: 'models must be a non-empty array of names' });
+          }
+          return void Promise.all(list.map((name) => fetchModelInfo(c, name)))
+            .then((models) => sendJson(res, 200, { ok: true, models }));
         });
         return;
       }
