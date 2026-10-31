@@ -165,6 +165,23 @@ const STR = {
     'status.count': 'count',
     'status.block': 'blocked',
     'status.error': 'error',
+    'gate.loginNote': 'Enter the panel password to continue.',
+    'gate.setupNote': 'Choose a panel password. It protects this panel and is stored in the configuration file.',
+    'gate.password': 'Password',
+    'gate.newPassword': 'Choose a password',
+    'gate.confirm': 'Confirm password',
+    'gate.signIn': 'Sign in',
+    'gate.set': 'Set password',
+    'gate.missing': 'Enter a password',
+    'gate.tooShort': 'Use at least 8 characters',
+    'gate.mismatch': 'The two passwords do not match',
+    'gate.hint': 'The password is stored in {p}',
+    'gate.hintSetup': 'At least 8 characters. It is saved to the configuration file.',
+    'gate.expired': 'Your session expired, sign in again',
+    'gate.offline': 'Could not reach the gateway',
+    'gate.failed': 'Sign-in failed',
+    'gate.wrong': 'Wrong password',
+    'gate.throttled': 'Too many attempts, wait a minute',
     'prompt.password': 'Panel password:',
     'warn.capsPaused': 'the capture limit is full, full capture stopped',
     'foot.text': 'ollama-gateway v{v} · unofficial community tool',
@@ -327,6 +344,23 @@ const STR = {
     'status.count': 'sayım',
     'status.block': 'blok',
     'status.error': 'hata',
+    'gate.loginNote': 'Devam etmek için panel şifresini gir.',
+    'gate.setupNote': 'Bir panel şifresi belirle. Paneli korur ve ayar dosyasına yazılır.',
+    'gate.password': 'Şifre',
+    'gate.newPassword': 'Bir şifre belirle',
+    'gate.confirm': 'Şifreyi doğrula',
+    'gate.signIn': 'Giriş yap',
+    'gate.set': 'Şifreyi belirle',
+    'gate.missing': 'Şifre gir',
+    'gate.tooShort': 'En az 8 karakter kullan',
+    'gate.mismatch': 'İki şifre aynı değil',
+    'gate.hint': 'Şifre burada saklanır: {p}',
+    'gate.hintSetup': 'En az 8 karakter. Ayar dosyasına kaydedilir.',
+    'gate.expired': 'Oturum süresi doldu, yeniden giriş yap',
+    'gate.offline': 'Geçide ulaşılamadı',
+    'gate.failed': 'Giriş başarısız',
+    'gate.wrong': 'Şifre yanlış',
+    'gate.throttled': 'Çok fazla deneme, bir dakika bekle',
     'prompt.password': 'Panel şifresi:',
     'warn.capsPaused': 'captures sınırı doldu, tam kayıt durdu',
     'foot.text': 'ollama-gateway v{v} · resmî olmayan topluluk aracı',
@@ -404,32 +438,131 @@ function localizeRows() {
   });
 }
 
+// ---- session ----
+
+let session = '';
+let sessionExp = 0;
+let panelInfo = null;
+let gateMode = 'login';
+
+function loadSession() {
+  try {
+    session = sessionStorage.getItem('gwSession') || '';
+    sessionExp = Number(sessionStorage.getItem('gwSessionExp') || 0) || 0;
+  } catch (_) {
+    session = '';
+    sessionExp = 0;
+  }
+}
+
+function saveSession(id, expiresAt) {
+  session = id;
+  sessionExp = new Date(expiresAt).getTime();
+  try {
+    sessionStorage.setItem('gwSession', session);
+    sessionStorage.setItem('gwSessionExp', String(sessionExp));
+  } catch (_) {}
+}
+
+function clearSession() {
+  session = '';
+  sessionExp = 0;
+  try {
+    sessionStorage.removeItem('gwSession');
+    sessionStorage.removeItem('gwSessionExp');
+    sessionStorage.removeItem('gwToken');   // older panels stored the password here
+  } catch (_) {}
+}
+
+function sessionUsable() {
+  return !!session && sessionExp > Date.now();
+}
+
+// ---- sign-in gate ----
+
+function showGate(mode) {
+  gateMode = mode === 'setup' ? 'setup' : 'login';
+  const setup = gateMode === 'setup';
+  $('authGate').hidden = false;
+  document.querySelector('.wrap').hidden = true;
+  $('gateNote').textContent = setup ? t('gate.setupNote') : t('gate.loginNote');
+  $('gatePasswordLabel').textContent = setup ? t('gate.newPassword') : t('gate.password');
+  $('gateConfirmRow').hidden = !setup;
+  $('gateConfirm').value = '';
+  $('gatePassword').value = '';
+  $('gateSubmit').textContent = setup ? t('gate.set') : t('gate.signIn');
+  $('gateError').hidden = true;
+  const path = panelInfo && panelInfo.configPath ? panelInfo.configPath : '';
+  $('gateHint').textContent = setup ? t('gate.hintSetup') : (path ? t('gate.hint', { p: path }) : '');
+  $('gateFoot').textContent = panelInfo ? 'v' + panelInfo.version : '';
+  setTimeout(() => { try { $('gatePassword').focus(); } catch (_) {} }, 30);
+}
+
+function hideGate() {
+  $('authGate').hidden = true;
+  document.querySelector('.wrap').hidden = false;
+}
+
+function gateError(message) {
+  $('gateError').textContent = message;
+  $('gateError').hidden = false;
+}
+
+async function fetchPublic() {
+  try {
+    const r = await fetch('/admin/api/public', { headers: { accept: 'application/json' } });
+    panelInfo = r.ok ? await r.json() : null;
+  } catch (_) {
+    panelInfo = null;
+  }
+}
+
+async function doLogin(password) {
+  const r = await fetch('/admin/api/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(j.error || ('HTTP ' + r.status));
+    err.code = j.code || '';
+    throw err;
+  }
+  saveSession(j.session, j.expiresAt);
+}
+
+async function doSetup(password) {
+  // With no password configured the server allows exactly one write: this one.
+  const r = await fetch('/admin/api/config', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ admin: { token: password } }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  await doLogin(password);
+}
+
 // ---- transport ----
 
-let authBlocked = false;
-
-async function api(ep, o = {}, retry = true) {
+async function api(ep, o = {}) {
+  if (!sessionUsable()) {
+    showGate(panelInfo && panelInfo.passwordSet ? 'login' : 'setup');
+    throw new Error(t('gate.expired'));
+  }
   const init = { ...o };
-  const silent = init.silent === true;
   delete init.silent;
-  const h = { 'content-type': 'application/json' };
-  const tok = sessionStorage.getItem('gwToken');
-  if (tok) h['x-admin-token'] = tok;
+  const h = { 'content-type': 'application/json', 'x-admin-token': session };
   const r = await fetch(ep, { ...init, headers: h });
   if (r.status === 401) {
-    // A background poll must never open a blocking prompt every few seconds.
-    if (silent || authBlocked || !retry) {
-      authBlocked = true;
-      throw new Error('admin password required');
-    }
-    const p = prompt(t('prompt.password'));
-    if (p === null) {
-      authBlocked = true;
-      throw new Error('admin password required');
-    }
-    sessionStorage.setItem('gwToken', p);
-    authBlocked = false;
-    return api(ep, o, false);
+    clearSession();
+    showGate('login');
+    throw new Error(t('gate.expired'));
+  }
+  if (r.status === 428) {
+    showGate('setup');
+    throw new Error(t('gate.expired'));
   }
   if (!r.ok) {
     let msg = 'HTTP ' + r.status;
@@ -530,7 +663,7 @@ async function refreshStatus(silent) {
       '</tr>').join('');
     $('tbody').innerHTML = rows || '<tr><td class="empty" colspan="8">' + esc(t('recent.empty')) + '</td></tr>';
   } catch (e) {
-    chip($('cUpstream'), authBlocked ? t('conn.signedOut') : t('common.error', { e: e.message }), 'bad');
+    chip($('cUpstream'), t('common.error', { e: e.message }), 'bad');
   }
 }
 
@@ -976,17 +1109,6 @@ function exportConfig() {
   });
 }
 
-function afterConfigSwap(next) {
-  cfg = next;
-  modelInfo.clear();
-  fillSettings();
-  renderModels();
-  renderRules();
-  renderSnippet();
-  refreshStatus();
-  loadModels(true);
-}
-
 // ---- tabs ----
 
 function showTab(name) {
@@ -1059,8 +1181,36 @@ $('modelFilter').addEventListener('input', (e) => {
 });
 
 $('cLogout').addEventListener('click', () => {
-  sessionStorage.removeItem('gwToken');
+  const current = session;
+  clearSession();
+  if (current) {
+    fetch('/admin/api/logout', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-admin-token': current },
+    }).catch(() => {});
+  }
   location.reload();
+});
+
+$('gateForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const password = $('gatePassword').value;
+  if (!password) return gateError(t('gate.missing'));
+  try {
+    if (gateMode === 'setup') {
+      if (password.length < 8) return gateError(t('gate.tooShort'));
+      if (password !== $('gateConfirm').value) return gateError(t('gate.mismatch'));
+      await doSetup(password);
+    } else {
+      await doLogin(password);
+    }
+    location.reload();
+  } catch (err) {
+    const message = err.code === 'wrong_password' ? t('gate.wrong')
+      : err.code === 'throttled' ? t('gate.throttled')
+        : (err.message || t('gate.failed'));
+    gateError(message);
+  }
 });
 
 $('copySnippet').addEventListener('click', guard(copySnippet));
@@ -1136,9 +1286,17 @@ $('sSave').addEventListener('click', guard(async () => {
   if ($('clKeyClear').checked) patch.clearApiKey = true;
   if ($('pwTokenClear').checked) patch.clearAdminToken = true;
   await postConfig(patch);
-  if (newToken) sessionStorage.setItem('gwToken', newToken);
-  if (patch.clearAdminToken) sessionStorage.removeItem('gwToken');
-  authBlocked = false;
+  if (newToken) {
+    // A password change invalidates every session, including this one.
+    await doLogin(newToken);
+    location.reload();
+    return;
+  }
+  if (patch.clearAdminToken) {
+    clearSession();
+    location.reload();
+    return;
+  }
   modelInfo.clear();
   fillSettings();
   renderSnippet();
@@ -1173,26 +1331,23 @@ $('importFile').addEventListener('change', guard(async (e) => {
   let data = null;
   try { data = JSON.parse(text); } catch (_) { return toast(t('configCard.importError'), false); }
   if (!confirm(t('configCard.importConfirm'))) return;
-  const r = await api('/admin/api/config/import', { method: 'POST', body: JSON.stringify(data) });
-  afterConfigSwap(r.config);
-  toast(t('configCard.imported'));
+  await api('/admin/api/config/import', { method: 'POST', body: JSON.stringify(data) });
+  // The password or the upstream may have changed; reloading re-runs the gate.
+  location.reload();
 }));
 
 $('cfgReset').addEventListener('click', guard(async () => {
   if (!confirm(t('configCard.resetConfirm'))) return;
-  const r = await api('/admin/api/config/reset', {
+  await api('/admin/api/config/reset', {
     method: 'POST',
     body: JSON.stringify({ keepSecrets: $('resetKeep').checked }),
   });
-  if (r.newAdminToken) sessionStorage.setItem('gwToken', r.newAdminToken);
-  afterConfigSwap(r.config);
-  toast(t('common.saved'));
+  location.reload();
 }));
 
 // ---- start ----
 
-async function init() {
-  applyLang(lang, false);
+async function startApp() {
   cfg = (await api('/admin/api/config')).config;
   if (cfg.mode) modeSel = cfg.mode;
   fillSettings();
@@ -1216,4 +1371,35 @@ async function init() {
   });
 }
 
-init().catch((e) => toast(t('common.error', { e: e.message }), false));
+async function authInit() {
+  applyLang(lang, false);
+  loadSession();
+  await fetchPublic();
+  if (!panelInfo) {
+    showGate('login');
+    gateError(t('gate.offline'));
+    return;
+  }
+  if (!panelInfo.passwordSet) {
+    showGate('setup');
+    return;
+  }
+  if (sessionUsable()) {
+    hideGate();
+    try {
+      await startApp();
+    } catch (e) {
+      // api() already put the gate back up when the session was rejected.
+      if (!sessionUsable()) return;
+      toast(t('common.error', { e: e.message }), false);
+    }
+    return;
+  }
+  clearSession();
+  showGate('login');
+}
+
+authInit().catch((e) => {
+  showGate('login');
+  gateError(e.message || t('gate.offline'));
+});

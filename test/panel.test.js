@@ -70,6 +70,16 @@ test('the panel exposes the language switch and the theme metadata', () => {
   assert.match(js, /localStorage\.getItem\('gwLang'\)/);
 });
 
+test('the panel signs in through a real gate, not a browser prompt', () => {
+  assert.match(html, /id="authGate"/);
+  assert.match(html, /id="gatePassword"/);
+  assert.match(html, /id="gateConfirm"/);
+  assert.equal(/\bprompt\(/.test(js), false, 'no blocking browser prompt');
+  assert.match(js, /gwSession/);
+  assert.match(js, /\/admin\/api\/login/);
+  assert.match(js, /\/admin\/api\/public/);
+});
+
 test('destructive actions ask for confirmation first', () => {
   for (const id of ['lgClear', 'capClear', 'cfgReset']) {
     const start = js.indexOf("$('" + id + "')");

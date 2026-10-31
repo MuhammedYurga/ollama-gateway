@@ -40,9 +40,14 @@ function closeServer(server) {
   return new Promise((resolve) => server.close(resolve));
 }
 
+let TEST_TOKEN = '';
+
 function request(port, target, opts = {}) {
   return new Promise((resolve, reject) => {
     const headers = { ...(opts.headers || {}) };
+    if (target.startsWith('/admin/api/') && opts.auth !== false && !headers['x-admin-token'] && TEST_TOKEN) {
+      headers['x-admin-token'] = TEST_TOKEN;
+    }
     const body = opts.body;
     if (body != null) headers['content-length'] = Buffer.byteLength(body);
     const rq = http.request({ host: '127.0.0.1', port, path: target, method: opts.method || 'GET', headers }, (res) => {
@@ -81,7 +86,7 @@ function baseConfig(overrides) {
     titleFix: { enabled: false, sysContains: 'never', minTokens: 1 },
     countTokens: { enabled: true, charsPerToken: 4 },
     logging: { usageLog: false, promptHeads: false, fullCapturePerBucket: 0, capFileLimit: 0, probeOutValue: 0 },
-    admin: { token: '' },
+    admin: { token: 'test-token' },
   };
   return sanitizeConfig(mergeDeep(base, overrides || {})).config;
 }
@@ -89,6 +94,7 @@ function baseConfig(overrides) {
 async function withProxy(overrides, fn) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-'));
   const config = baseConfig(overrides);
+  TEST_TOKEN = config.admin.token;
   const server = createServer(config, dataDir, path.join(dataDir, 'config.json'));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
@@ -269,11 +275,87 @@ test('status reports the listening port separately from the configured port', as
 
 test('admin auth accepts only the header token', async () => {
   await withProxy({ admin: { token: 'panel-pw' } }, async ({ port }) => {
-    assert.equal((await request(port, '/admin/api/config')).status, 401);
-    assert.equal((await request(port, '/admin/api/config', { headers: { 'x-admin-token': 'wrong' } })).status, 401);
-    assert.equal((await request(port, '/admin/api/config?token=panel-pw')).status, 401);
+    assert.equal((await request(port, '/admin/api/config', { auth: false })).status, 401);
+    assert.equal((await request(port, '/admin/api/config', { auth: false, headers: { 'x-admin-token': 'wrong' } })).status, 401);
+    assert.equal((await request(port, '/admin/api/config?token=panel-pw', { auth: false })).status, 401);
     assert.equal((await request(port, '/admin/api/config', { headers: { 'x-admin-token': 'panel-pw' } })).status, 200);
   });
+});
+
+test('first run opens only the setup path until a password is set', async () => {
+  await withProxy({ admin: { token: '' } }, async ({ port }) => {
+    const pub = JSON.parse((await request(port, '/admin/api/public', { auth: false })).body);
+    assert.equal(pub.passwordSet, false);
+    assert.equal(typeof pub.configPath, 'string');
+
+    assert.equal((await request(port, '/admin/api/models', { auth: false })).status, 428);
+    assert.equal((await request(port, '/admin/api/config', { auth: false })).status, 200);
+
+    const setup = await request(port, '/admin/api/config', {
+      method: 'POST',
+      auth: false,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ admin: { token: 'new-secret' } }),
+    });
+    assert.equal(setup.status, 200);
+
+    const login = await request(port, '/admin/api/login', {
+      method: 'POST',
+      auth: false,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: 'new-secret' }),
+    });
+    assert.equal(login.status, 200);
+    const body = JSON.parse(login.body);
+    assert.equal(typeof body.session, 'string');
+    assert.ok(new Date(body.expiresAt).getTime() > Date.now());
+
+    const withSession = await request(port, '/admin/api/config', { auth: false, headers: { 'x-admin-token': body.session } });
+    assert.equal(withSession.status, 200);
+
+    const pub2 = JSON.parse((await request(port, '/admin/api/public', { auth: false })).body);
+    assert.equal(pub2.passwordSet, true);
+
+    const out = await request(port, '/admin/api/logout', { method: 'POST', auth: false, headers: { 'x-admin-token': body.session } });
+    assert.equal(out.status, 200);
+    assert.equal((await request(port, '/admin/api/config', { auth: false, headers: { 'x-admin-token': body.session } })).status, 401);
+  });
+});
+
+test('a wrong password is rejected and repeated attempts are throttled', async () => {
+  await withProxy({ admin: { token: 'right' } }, async ({ port }) => {
+    const attempt = (password) => request(port, '/admin/api/login', {
+      method: 'POST',
+      auth: false,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    for (let i = 0; i < 5; i++) {
+      assert.equal((await attempt('wrong')).status, 401);
+    }
+    assert.equal((await attempt('wrong')).status, 429);
+    assert.equal((await attempt('right')).status, 429, 'the throttle is per address, not per password');
+  });
+});
+
+test('a session stops working after its lifetime', async () => {
+  process.env.PROXY_SESSION_TTL_MS = '150';
+  try {
+    await withProxy({ admin: { token: 'pw' } }, async ({ port }) => {
+      const login = await request(port, '/admin/api/login', {
+        method: 'POST',
+        auth: false,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: 'pw' }),
+      });
+      const { session } = JSON.parse(login.body);
+      assert.equal((await request(port, '/admin/api/config', { auth: false, headers: { 'x-admin-token': session } })).status, 200);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      assert.equal((await request(port, '/admin/api/config', { auth: false, headers: { 'x-admin-token': session } })).status, 401);
+    });
+  } finally {
+    delete process.env.PROXY_SESSION_TTL_MS;
+  }
 });
 
 test('admin write endpoints reject cross-origin and non-JSON requests', async () => {
@@ -523,7 +605,7 @@ test('config reset restores defaults and keeps the secrets by default', async ()
   });
 });
 
-test('config reset without keepSecrets rotates the panel password', async () => {
+test('config reset without keepSecrets clears the password and returns to setup', async () => {
   await withProxy({ admin: { token: 'oldpw' } }, async ({ port }) => {
     const r = await request(port, '/admin/api/config/reset', {
       method: 'POST',
@@ -532,14 +614,12 @@ test('config reset without keepSecrets rotates the panel password', async () => 
     });
     const j = JSON.parse(r.body);
     assert.equal(r.status, 200);
-    assert.equal(typeof j.newAdminToken, 'string');
-    assert.ok(j.newAdminToken.length >= 16);
-    assert.notEqual(j.newAdminToken, 'oldpw');
+    assert.equal(j.newAdminToken, null);
+    assert.equal(j.config.admin.tokenSet, false);
 
-    const after = await request(port, '/admin/api/config', { headers: { 'x-admin-token': 'oldpw' } });
-    assert.equal(after.status, 401);
-    const fresh = await request(port, '/admin/api/config', { headers: { 'x-admin-token': j.newAdminToken } });
-    assert.equal(fresh.status, 200);
+    const pub = JSON.parse((await request(port, '/admin/api/public', { auth: false })).body);
+    assert.equal(pub.passwordSet, false);
+    assert.equal((await request(port, '/admin/api/models', { auth: false })).status, 428);
   });
 });
 

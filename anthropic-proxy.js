@@ -422,6 +422,40 @@ function bootstrapConfig() {
   return d;
 }
 
+// ---- Panel sessions ----
+// The panel signs in with the configured password and receives a short-lived
+// session id. The password itself is never stored in the browser.
+const SESSION_TTL_DEFAULT_MS = 60 * 60 * 1000;
+const sessions = new Map();          // session id -> expiry (ms)
+const loginFailures = new Map();     // remote address -> { count, at }
+
+function sessionTtlMs() {
+  return cfgNum(process.env.PROXY_SESSION_TTL_MS, 100, 24 * 60 * 60 * 1000, SESSION_TTL_DEFAULT_MS);
+}
+
+function pruneSessions() {
+  const now = Date.now();
+  for (const [id, exp] of sessions) {
+    if (exp <= now) sessions.delete(id);
+  }
+  while (sessions.size > 200) sessions.delete(sessions.keys().next().value);
+}
+
+function createSession() {
+  const id = crypto.randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + sessionTtlMs();
+  sessions.set(id, expiresAt);
+  pruneSessions();
+  return { id, expiresAt };
+}
+
+function sessionValid(id) {
+  const exp = sessions.get(id);
+  if (!exp) return false;
+  if (exp <= Date.now()) { sessions.delete(id); return false; }
+  return true;
+}
+
 let capPaused = false;
 function recheckCapPaused() {
   if (!cfg || cfg.logging.capFileLimit === 0) { capPaused = true; return; }
@@ -434,7 +468,9 @@ function recheckCapPaused() {
 }
 
 function applyConfig(c) {
+  const previousToken = cfg && cfg.admin ? cfg.admin.token : null;
   cfg = c;
+  if (previousToken !== null && previousToken !== c.admin.token) sessions.clear();
   recheckCapPaused();
 }
 
@@ -453,8 +489,7 @@ function loadConfig(cfgPath) {
     const boot = bootstrapConfig();
     const fresh = sanitizeConfig(boot || deep(DEFAULTS)).config;
     if (!fresh.admin.token) {
-      fresh.admin.token = crypto.randomBytes(16).toString('hex');
-      console.log('[config] generated admin password: ' + fresh.admin.token);
+      console.log('[config] no panel password yet; open the panel to set one');
     }
     applyConfig(fresh);
     if (saveConfigFile(fresh)) console.log('[config] created: ' + CFG_FILE);
@@ -467,8 +502,7 @@ function loadConfig(cfgPath) {
     console.log('[config] the file was invalid, it was rebuilt from defaults (backup: *.corrupt.json)');
     const fresh = sanitizeConfig(deep(DEFAULTS)).config;
     if (!fresh.admin.token) {
-      fresh.admin.token = crypto.randomBytes(16).toString('hex');
-      console.log('[config] generated admin password: ' + fresh.admin.token);
+      console.log('[config] no panel password yet; open the panel to set one');
     }
     applyConfig(fresh);
     saveConfigFile(fresh);
@@ -1355,11 +1389,60 @@ function qparam(u, k) {
   try { return new URL(u, 'http://x').searchParams.get(k); } catch (_) { return null; }
 }
 
-// Token yalnizca basliktan kabul edilir; query string tarayici gecmisine sizar.
+// The header carries either a live panel session or the configured password
+// itself (CLI and curl). A query string is never accepted.
 function authed(req, c) {
-  if (!c.admin.token) return true;
   const h = req.headers['x-admin-token'];
-  return typeof h === 'string' && sameToken(h, c.admin.token);
+  if (typeof h !== 'string' || !h) return false;
+  if (sessionValid(h)) return true;
+  return !!c.admin.token && sameToken(h, c.admin.token);
+}
+
+// Unauthenticated but loopback-only: the panel needs to know whether to show
+// the login screen or the first-run password setup, and where the config lives.
+function publicInfo(c) {
+  return {
+    ok: true,
+    version: VERSION,
+    passwordSet: !!c.admin.token,
+    mode: c.mode,
+    configPath: CFG_FILE,
+    dataDir: DATA_DIR,
+  };
+}
+
+function handleLogin(req, res, c) {
+  if (!c.admin.token) {
+    return sendJson(res, 409, { ok: false, error: 'no panel password is set yet', code: 'password_setup_required' });
+  }
+  readJsonBody(req, res, 16 * 1024, (body) => {
+    const password = (body && typeof body.password === 'string') ? body.password : '';
+    if (!password) return sendJson(res, 400, { ok: false, error: 'password required', code: 'password_required' });
+
+    const ip = String(req.socket.remoteAddress || '');
+    const now = Date.now();
+    const record = loginFailures.get(ip);
+    if (record && record.count >= 5 && (now - record.at) < 60000) {
+      return sendJson(res, 429, { ok: false, error: 'too many attempts, try again in a minute', code: 'throttled' });
+    }
+
+    if (!sameToken(password, c.admin.token)) {
+      const fresh = (record && (now - record.at) < 60000) ? record.count + 1 : 1;
+      loginFailures.set(ip, { count: fresh, at: now });
+      if (loginFailures.size > 50) loginFailures.delete(loginFailures.keys().next().value);
+      return sendJson(res, 401, { ok: false, error: 'wrong password', code: 'wrong_password' });
+    }
+
+    loginFailures.delete(ip);
+    const session = createSession();
+    console.log('[panel] sign in from ' + (ip || '?' ) + ' (session valid until ' + new Date(session.expiresAt).toISOString() + ')');
+    sendJson(res, 200, {
+      ok: true,
+      session: session.id,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+      ttlMs: sessionTtlMs(),
+    });
+  });
 }
 
 // panel.js icin guvenlik basliklari; script-src 'self' oldugu icin HTML'de
@@ -1549,10 +1632,6 @@ function handleResetConfig(req, res) {
     if (keepSecrets) {
       fresh.cloud.apiKey = current.cloud.apiKey;
       fresh.admin.token = current.admin.token;
-    } else if (!fresh.admin.token) {
-      fresh.admin.token = crypto.randomBytes(16).toString('hex');
-      newAdminToken = fresh.admin.token;
-      console.log('[config] generated admin password: ' + fresh.admin.token);
     }
     const changed = configDiff(current, fresh);
     if (!saveConfigFile(fresh)) {
@@ -1584,7 +1663,35 @@ function handleAdmin(req, res) {
   if (!api.startsWith('/admin/api/')) {
     res.writeHead(404); return res.end('not found');
   }
-  if (!authed(req, c)) return sendJson(res, 401, { ok: false, error: 'admin password required' });
+  if (req.method === 'GET' && api === '/admin/api/public') {
+    return sendJson(res, 200, publicInfo(c));
+  }
+
+  if (!c.admin.token) {
+    // First run: the panel is open on loopback but only the password setup and
+    // a read of the current config are allowed. Everything else waits for a
+    // password, which is what makes the setup mandatory.
+    if (req.method === 'POST' && api === '/admin/api/login') return handleLogin(req, res, c);
+    const setupAllowed = (req.method === 'GET' && api === '/admin/api/config') ||
+                         (req.method === 'POST' && api === '/admin/api/config');
+    if (!setupAllowed) {
+      return sendJson(res, 428, {
+        ok: false,
+        error: 'set a panel password first',
+        code: 'password_required',
+      });
+    }
+  } else {
+    if (req.method === 'POST' && api === '/admin/api/login') return handleLogin(req, res, c);
+    if (!authed(req, c)) {
+      return sendJson(res, 401, { ok: false, error: 'admin session required', code: 'auth_required' });
+    }
+    if (req.method === 'POST' && api === '/admin/api/logout') {
+      const session = req.headers['x-admin-token'];
+      if (typeof session === 'string') sessions.delete(session);
+      return sendJson(res, 200, { ok: true });
+    }
+  }
   try {
     if (req.method === 'GET') {
       if (api === '/admin/api/config') return sendJson(res, 200, { ok: true, config: publicConfig(c) });
@@ -1726,6 +1833,8 @@ function handleRequest(req, res) {
 // Test ve gomme icin: verilen ayar ve veri diziniyle sunucu olusturur.
 function createServer(appCfg, dataDir, cfgPath) {
   cfg = appCfg;
+  sessions.clear();
+  loginFailures.clear();
   if (cfgPath) CFG_FILE = path.resolve(cfgPath);
   setPaths(dataDir);
   recheckCapPaused();
@@ -1815,7 +1924,7 @@ function main() {
     console.log('routes (' + cfg.mode + '):');
     for (const [k, v] of Object.entries(activeSection(cfg).modelMap)) console.log(`  ${k} -> ${v}`);
     console.log(`  (fallback) -> ${activeSection(cfg).fallbackModel}`);
-    console.log(`panel:   http://127.0.0.1:${cfg.port}/admin` + (cfg.admin.token ? '  (password protected)' : '  (no password)'));
+    console.log(`panel:   http://127.0.0.1:${cfg.port}/admin` + (cfg.admin.token ? '  (password protected)' : '  (a password is set on first open)'));
     console.log(`config:  ${CFG_FILE}`);
     console.log(`data:    ${DATA_DIR}`);
     console.log(`usage-log: ${cfg.logging.usageLog ? USAGE_LOG : 'OFF'}` +
