@@ -1,0 +1,16 @@
+.git
+.gitignore
+.github
+.omc
+node_modules
+captures
+usage-log*.txt
+probe-log*.txt
+proxy-config.json
+proxy-config.*.json
+!proxy-config.example.json
+TASKS.md
+test
+docs
+*.tgz
+*.log

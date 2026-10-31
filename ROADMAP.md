@@ -103,9 +103,9 @@ way. It is not a model host, a reseller, or a hosted service.
 - [x] Config import, export and reset
 - [x] Client recipes: Claude Code, Cline, Continue
 - [x] Accessibility and mobile layout pass
+- [x] Docker image with an explicit auth model
 - [ ] Screenshots and a short demo
 - [ ] Documentation site
-- [ ] Docker image with an explicit auth model
 - [ ] Homebrew, winget and Scoop packages
 
 ### v0.3.0: adapters and routing

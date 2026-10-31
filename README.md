@@ -96,6 +96,16 @@ cd ollama-gateway
 node anthropic-proxy.js
 ```
 
+Docker, with the port published on the host loopback:
+
+```bash
+docker run -d --name ollama-gateway -p 127.0.0.1:8799:8799 \
+  -v ollama-gateway-data:/data ollama-gateway
+```
+
+Build, Compose and the container security model are in
+[docs/docker.md](docs/docker.md).
+
 On first start with no configuration file, the gateway creates one, generates a
 random admin password, and prints it once:
 
@@ -293,6 +303,7 @@ ollama-gateway [options]
   --config <path>    Configuration file
   --data-dir <path>  Directory for logs and captures
   --port <number>    Gateway port (default 8799)
+  --bind <address>   Listen address (default 127.0.0.1; anything else needs a panel password)
   --mode <mode>      local | cloud
   --check-config     Validate the configuration file and exit
   -h, --help         Show help
@@ -305,7 +316,7 @@ without starting a listener. It never rewrites the file, so it is safe to run
 before a restart or from CI.
 
 Environment variables: `PROXY_CFG`, `PROXY_DATA_DIR`, `PROXY_PORT`,
-`PROXY_MODE`, `OLLAMA_API_KEY`.
+`PROXY_BIND`, `PROXY_MODE`, `OLLAMA_API_KEY`.
 
 ## Logging and privacy
 
@@ -329,8 +340,9 @@ manager when you no longer need them.
 
 ## Security
 
-- Binds to `127.0.0.1` only. Do not expose the port through a reverse proxy,
-  tunnel, or port forward.
+- Binds to `127.0.0.1` by default. A non-loopback bind is refused unless a panel
+  password is set, and the model API has no authentication of its own, so keep
+  the port local. The container case is described in [docs/docker.md](docs/docker.md).
 - Admin requests are checked against the listening port using `Host` and
   `Origin`; configuration writes require `Content-Type: application/json`.
   This blocks cross-site request forgery and DNS rebinding from a browser.

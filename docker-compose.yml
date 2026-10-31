@@ -1,0 +1,17 @@
+services:
+  ollama-gateway:
+    build: .
+    image: ollama-gateway:local
+    container_name: ollama-gateway
+    restart: unless-stopped
+    ports:
+      # Loopback only. Do not change the left side to 0.0.0.0.
+      - "127.0.0.1:8799:8799"
+    volumes:
+      - gateway-data:/data
+    # Linux only: lets the container reach an Ollama daemon on the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  gateway-data:

@@ -172,17 +172,18 @@ function usage() {
     '  --config <file>    Configuration file (default: script directory or user config dir)',
     '  --data-dir <dir>   Directory for logs and captures (default: config file directory)',
     '  --port <number>    Gateway port (default 8799)',
+    '  --bind <address>   Listen address (default 127.0.0.1; anything else needs a panel password)',
     '  --mode <mode>      local | cloud',
     '  --check-config     Validate the configuration file and exit',
     '  -h, --help         Show this help',
     '  -v, --version      Print the version',
     '',
-    'Environment: PROXY_CFG, PROXY_DATA_DIR, PROXY_PORT, PROXY_MODE, OLLAMA_API_KEY',
+    'Environment: PROXY_CFG, PROXY_DATA_DIR, PROXY_PORT, PROXY_BIND, PROXY_MODE, OLLAMA_API_KEY',
   ].join('\n');
 }
 
 function parseArgs(argv) {
-  const out = { config: null, dataDir: null, port: null, mode: null, checkConfig: false, help: false, version: false };
+  const out = { config: null, dataDir: null, port: null, mode: null, bind: null, checkConfig: false, help: false, version: false };
   const value = (i, name) => {
     if (i + 1 >= argv.length) throw new Error(name + ' requires a value');
     return argv[i + 1];
@@ -200,6 +201,8 @@ function parseArgs(argv) {
     else if (a.startsWith('--port=')) out.port = Number(a.slice('--port='.length));
     else if (a === '--mode') { out.mode = String(value(i, '--mode')).toLowerCase(); i++; }
     else if (a.startsWith('--mode=')) out.mode = a.slice('--mode='.length).toLowerCase();
+    else if (a === '--bind') { out.bind = String(value(i, '--bind')).trim(); i++; }
+    else if (a.startsWith('--bind=')) out.bind = a.slice('--bind='.length).trim();
     else throw new Error('unknown option: ' + a);
   }
   if (out.mode && !cfgMode(out.mode)) throw new Error('--mode must be local or cloud');
@@ -476,6 +479,22 @@ function loadConfig(cfgPath) {
 function isCloud(c) { return !!c && c.mode === 'cloud'; }
 
 function activeSection(c) { return isCloud(c) ? c.cloud : c.local; }
+
+// The default keeps the gateway on loopback. Binding elsewhere exposes an
+// unauthenticated model API to the network, so it requires a panel password
+// first; the panel itself still answers only on loopback host headers.
+function resolveBind(config, raw) {
+  const bind = String(raw || '').trim() || '127.0.0.1';
+  const loopback = isLoopbackHost(bind);
+  if (!loopback && !(config && config.admin && config.admin.token)) {
+    return {
+      bind,
+      loopback,
+      error: 'refusing to listen on ' + bind + ' without a panel password; set one first or keep 127.0.0.1',
+    };
+  }
+  return { bind, loopback, error: '' };
+}
 
 function isLoopbackHost(host) {
   const h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
@@ -1767,6 +1786,13 @@ function main() {
   if (envPort !== null) cfg.port = cfgNum(envPort, 1, 65535, cfg.port);
   if (args.port !== null) cfg.port = args.port;
 
+  const bindInfo = resolveBind(cfg, args.bind || process.env.PROXY_BIND || '');
+  if (bindInfo.error) {
+    console.log('[error] ' + bindInfo.error);
+    process.exitCode = 1;
+    return;
+  }
+
   const server = createServer(cfg, paths.dataDir, paths.cfgPath);
   server.once('error', (e) => {
     if (e.code === 'EADDRINUSE') {
@@ -1777,9 +1803,12 @@ function main() {
     process.exitCode = 1;
   });
 
-  server.listen(cfg.port, '127.0.0.1', () => {
+  server.listen(cfg.port, bindInfo.bind, () => {
     console.log(`ollama-gateway ${VERSION}`);
-    console.log(`gateway: http://127.0.0.1:${cfg.port}`);
+    console.log(`gateway: http://127.0.0.1:${cfg.port}` + (bindInfo.loopback ? '' : `  (listening on ${bindInfo.bind})`));
+    if (!bindInfo.loopback) {
+      console.log('[warning] the model API is reachable from the network and has no authentication; keep the port on loopback or a private network');
+    }
     console.log(`mode:    ${cfg.mode}  (${upstreamLabel(cfg)})` + (cfg.mode === 'cloud'
       ? `  api key: ${cfg.cloud.apiKey ? 'set' : 'MISSING - requests will return 401'}`
       : ''));
@@ -1823,6 +1852,8 @@ module.exports = {
   cfgNum,
   cfgMode,
   parseBaseUrl,
+  resolveBind,
+  isLoopbackHost,
   resolveModelFor,
   sameToken,
   publicConfig,

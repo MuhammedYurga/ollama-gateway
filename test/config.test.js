@@ -11,7 +11,9 @@ const {
   sanitizeConfig,
   checkConfigFile,
   mergeDeep,
+  parseArgs,
   parseBaseUrl,
+  resolveBind,
   resolveModelFor,
   sameToken,
   publicConfig,
@@ -46,6 +48,30 @@ test('legacy local config is migrated', () => {
   assert.equal(config.local.port, 1234);
   assert.equal(config.local.modelMap['claude-opus-5'], 'qwen3:8b');
   assert.deepEqual(config.systemAddon, ['keep']);
+});
+
+test('parseArgs reads the bind address', () => {
+  assert.equal(parseArgs(['--bind', '0.0.0.0']).bind, '0.0.0.0');
+  assert.equal(parseArgs(['--bind=127.0.0.1']).bind, '127.0.0.1');
+  assert.throws(() => parseArgs(['--bind']), /requires a value/);
+});
+
+test('binding outside loopback requires a panel password', () => {
+  const open = resolveBind({ admin: { token: '' } }, '0.0.0.0');
+  assert.equal(open.loopback, false);
+  assert.match(open.error, /without a panel password/);
+
+  const locked = resolveBind({ admin: { token: 'pw' } }, '0.0.0.0');
+  assert.equal(locked.error, '');
+  assert.equal(locked.loopback, false);
+
+  for (const address of ['127.0.0.1', 'localhost', '::1', '[::1]']) {
+    const r = resolveBind({ admin: { token: '' } }, address);
+    assert.equal(r.error, '', address + ' should not need a password');
+    assert.equal(r.loopback, true);
+  }
+
+  assert.equal(resolveBind({ admin: { token: '' } }, '').bind, '127.0.0.1');
 });
 
 test('a plain http cloud URL is only accepted for loopback', () => {

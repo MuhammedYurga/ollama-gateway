@@ -30,6 +30,10 @@ All notable changes to this project are documented here. The format follows
 - `--check-config` validates the resolved configuration, prints the routes and
   sanitizer warnings, and exits without starting a listener or touching the
   file.
+- `--bind` and `PROXY_BIND` change the listen address. A non-loopback address is
+  refused unless a panel password is set.
+- Dockerfile, Compose example and [docs/docker.md](docs/docker.md), with the
+  published port kept on the host loopback.
 
 ### Security
 
