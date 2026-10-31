@@ -350,3 +350,194 @@ test('panel HTML uses an external script and is served with a strict CSP', async
     assert.match(js.body, /sessionStorage/);
   });
 });
+
+test('model discovery lists upstream models, sorts them and caches the result', async () => {
+  const up = await startUpstream((req, res) => {
+    if (req.url === '/api/tags') {
+      return jsonResponse(res, {
+        models: [
+          { name: 'b:1b', size: 100, details: { family: 'beta', parameter_size: '1B', quantization_level: 'Q4' } },
+          { name: 'a:2b', size: 200, details: { family: 'alpha', parameter_size: '2B', quantization_level: 'Q8' } },
+          { size: 300 },
+        ],
+      });
+    }
+    jsonResponse(res, { ok: true });
+  });
+  try {
+    await withProxy({ local: { port: up.port } }, async ({ port }) => {
+      const r = await request(port, '/admin/api/models');
+      const j = JSON.parse(r.body);
+      assert.equal(r.status, 200);
+      assert.deepEqual(j.models.map((m) => m.name), ['a:2b', 'b:1b']);
+      assert.equal(j.models[0].family, 'alpha');
+      assert.equal(j.models[0].parameterSize, '2B');
+      assert.equal(j.count, 2);
+
+      const before = up.seen.filter((s) => s.url === '/api/tags').length;
+      await request(port, '/admin/api/models');
+      assert.equal(up.seen.filter((s) => s.url === '/api/tags').length, before, 'cached discovery should not hit the upstream');
+      await request(port, '/admin/api/models?refresh=1');
+      assert.equal(up.seen.filter((s) => s.url === '/api/tags').length, before + 1);
+    });
+  } finally {
+    await closeServer(up.server);
+  }
+});
+
+test('model discovery reports an upstream failure without throwing', async () => {
+  const up = await startUpstream((req, res) => {
+    res.writeHead(500, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  try {
+    await withProxy({ local: { port: up.port } }, async ({ port }) => {
+      const j = JSON.parse((await request(port, '/admin/api/models?refresh=1')).body);
+      assert.equal(j.ok, true);
+      assert.deepEqual(j.models, []);
+      assert.match(j.error, /no models|no JSON/);
+    });
+  } finally {
+    await closeServer(up.server);
+  }
+});
+
+test('config export never includes the API key or the panel password', async () => {
+  await withProxy({ cloud: { apiKey: 'super-secret-key' }, admin: { token: 'panel-pw' } }, async ({ port }) => {
+    const r = await request(port, '/admin/api/config/export', { headers: { 'x-admin-token': 'panel-pw' } });
+    const j = JSON.parse(r.body);
+    assert.equal(r.status, 200);
+    assert.equal(j.secretsIncluded, false);
+    assert.equal(j.config.cloud.apiKey, '');
+    assert.equal(j.config.admin.token, '');
+    assert.equal(r.body.includes('super-secret-key'), false);
+    assert.equal(r.body.includes('panel-pw'), false);
+  });
+});
+
+test('config import applies the file, keeps stored secrets and reports the change', async () => {
+  await withProxy({ cloud: { apiKey: 'keep-me' } }, async ({ port }) => {
+    const r = await request(port, '/admin/api/config/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'cloud',
+          cloud: { baseUrl: 'https://example.test', modelMap: { 'claude-opus-5': 'y' }, fallbackModel: 'y' },
+        },
+      }),
+    });
+    const j = JSON.parse(r.body);
+    assert.equal(r.status, 200);
+    assert.equal(j.ok, true);
+    assert.equal(j.config.mode, 'cloud');
+    assert.equal(j.config.cloud.baseUrl, 'https://example.test');
+    assert.deepEqual(j.config.cloud.modelMap, { 'claude-opus-5': 'y' });
+    assert.equal(j.config.cloud.apiKeySet, true, 'the stored key survives an import without one');
+    assert.ok(j.changed.includes('mode'));
+    assert.ok(j.changed.includes('cloud'));
+
+    const health = JSON.parse((await request(port, '/health')).body);
+    assert.equal(health.mode, 'cloud');
+  });
+});
+
+test('config import rejects a body that is not a config object', async () => {
+  await withProxy({}, async ({ port }) => {
+    const r = await request(port, '/admin/api/config/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify([1, 2, 3]),
+    });
+    assert.equal(r.status, 400);
+    assert.match(JSON.parse(r.body).error, /config object/);
+  });
+});
+
+test('config reset restores defaults and keeps the secrets by default', async () => {
+  await withProxy({
+    mode: 'cloud',
+    cloud: { apiKey: 'keep-me', modelMap: { 'claude-opus-5': 'x' } },
+    admin: { token: 'pw' },
+  }, async ({ port }) => {
+    const r = await request(port, '/admin/api/config/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-admin-token': 'pw' },
+      body: '{}',
+    });
+    const j = JSON.parse(r.body);
+    assert.equal(r.status, 200);
+    assert.equal(j.config.mode, 'local');
+    assert.deepEqual(j.config.cloud.modelMap, {});
+    assert.equal(j.config.cloud.apiKeySet, true);
+    assert.equal(j.config.admin.tokenSet, true);
+    assert.equal(j.newAdminToken, null);
+    assert.ok(j.changed.includes('mode'));
+  });
+});
+
+test('config reset without keepSecrets rotates the panel password', async () => {
+  await withProxy({ admin: { token: 'oldpw' } }, async ({ port }) => {
+    const r = await request(port, '/admin/api/config/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-admin-token': 'oldpw' },
+      body: JSON.stringify({ keepSecrets: false }),
+    });
+    const j = JSON.parse(r.body);
+    assert.equal(r.status, 200);
+    assert.equal(typeof j.newAdminToken, 'string');
+    assert.ok(j.newAdminToken.length >= 16);
+    assert.notEqual(j.newAdminToken, 'oldpw');
+
+    const after = await request(port, '/admin/api/config', { headers: { 'x-admin-token': 'oldpw' } });
+    assert.equal(after.status, 401);
+    const fresh = await request(port, '/admin/api/config', { headers: { 'x-admin-token': j.newAdminToken } });
+    assert.equal(fresh.status, 200);
+  });
+});
+
+test('the test message endpoint uses the active model map', async () => {
+  const up = await startUpstream((req, res, rec) => {
+    const parsed = rec.body ? JSON.parse(rec.body) : {};
+    jsonResponse(res, {
+      id: 'msg_test', type: 'message', role: 'assistant', model: parsed.model,
+      content: [{ type: 'text', text: 'OK' }], stop_reason: 'end_turn',
+      usage: { input_tokens: 3, output_tokens: 1 },
+    });
+  });
+  try {
+    await withProxy({ local: { port: up.port } }, async ({ port }) => {
+      const r = await request(port, '/admin/api/test-message', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      const j = JSON.parse(r.body);
+      assert.equal(j.ok, true);
+      assert.equal(j.status, 200);
+      assert.equal(j.model, 'fallback-model');
+      assert.equal(j.sample, 'OK');
+      const sent = up.seen.find((s) => s.url === '/v1/messages');
+      assert.ok(sent);
+      assert.equal(JSON.parse(sent.body).model, 'fallback-model');
+    });
+  } finally {
+    await closeServer(up.server);
+  }
+});
+
+test('the panel ships English defaults with a Turkish translation', async () => {
+  await withProxy({}, async ({ port }) => {
+    const html = await request(port, '/admin');
+    assert.match(html.body, /<html lang="en">/);
+    assert.match(html.body, /data-i18n="tab\.overview"/);
+    assert.equal(html.body.includes('Gateway Paneli'), false);
+    assert.match(html.body, /id="modelTable"/);
+
+    const js = await request(port, '/admin/panel.js');
+    assert.match(js.body, /'tab\.overview': 'Overview'/);
+    assert.match(js.body, /'tab\.overview': 'Genel'/);
+    assert.match(js.body, /navigator\.language/);
+    assert.match(js.body, /\/admin\/api\/test-message/);
+  });
+});

@@ -171,7 +171,7 @@ test('system addon keeps cached blocks byte-identical', () => {
   const c = { systemAddon: ['rule one'] };
   const j1 = { system: 'base' };
   applySystemAddon(j1, c);
-  assert.match(j1.system, /^base\n\n# STIL/);
+  assert.match(j1.system, /^base\n\n# STYLE INSTRUCTIONS/);
   assert.match(j1.system, /rule one/);
 
   const cached = { type: 'text', text: 'cached', cache_control: { type: 'ephemeral' } };

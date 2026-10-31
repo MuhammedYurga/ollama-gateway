@@ -3,24 +3,26 @@
 
 // ollama-gateway
 //
-// Anthropic Messages API uyumlu istemcileri (orn. Claude Code / Claude Desktop
-// gateway modu) Ollama modellerine baglayan tek dosyalik yerel gecit.
+// ollama-gateway
 //
-// Iki upstream, panelden secilir (Ayarlar > Baglanti yontemi):
-//   yerel : http://<adres>:<port>   orn. 127.0.0.1:11434 (Ollama daemon)
-//   bulut : https://ollama.com      Bearer API anahtari ile
-// Secim kaydedilince canli uygulanir; tek porttan hizmet edilir. Model
-// eslesmeleri moda gore ayridir.
+// A single-file local gateway that connects Anthropic Messages API clients
+// (for example Claude Code or the Claude Desktop gateway mode) to Ollama
+// models.
 //
-// Calistir: ollama-gateway            (npm kurulumu)
-//            node anthropic-proxy.js  (kaynak kopyasi)
+// Two upstreams, selected from the admin panel (Settings > Connection):
+//   local : http://<host>:<port>   e.g. 127.0.0.1:11434 (Ollama daemon)
+//   cloud : https://ollama.com     with a Bearer API key
+// A saved choice applies live on one port. Model maps are kept per mode.
+//
+// Run:      ollama-gateway            (npm install)
+//           node anthropic-proxy.js  (source checkout)
 // Panel:    http://127.0.0.1:8799/admin
 //
-// Ortam degiskenleri: PROXY_CFG, PROXY_DATA_DIR, PROXY_PORT, PROXY_MODE,
-// OLLAMA_API_KEY. Komut satiri bayraklari ortam degiskenlerini ezer.
+// Environment: PROXY_CFG, PROXY_DATA_DIR, PROXY_PORT, PROXY_MODE,
+// OLLAMA_API_KEY. Command line flags override environment variables.
 //
-// Bu yazilim resmi degildir; Anthropic veya Ollama ile baglantili degildir.
-// Ayrintilar: LEGAL.md
+// Unofficial software, not affiliated with Anthropic or Ollama.
+// See LEGAL.md.
 
 const http = require('http');
 const https = require('https');
@@ -165,23 +167,23 @@ function usage() {
   return [
     'ollama-gateway ' + VERSION,
     '',
-    'Kullanim: ollama-gateway [secenekler]',
+    'Usage: ollama-gateway [options]',
     '',
-    '  --config <dosya>   Ayar dosyasi (varsayilan: betik dizini ya da kullanici ayar dizini)',
-    '  --data-dir <dizin> Log ve yakalama dosyalarinin dizini (varsayilan: ayar dosyasinin dizini)',
-    '  --port <sayi>      Proxy portu (varsayilan 8799)',
-    '  --mode <mod>       local | cloud',
-    '  -h, --help         Bu yardimi goster',
-    '  -v, --version      Surumu yazdir',
+    '  --config <file>    Configuration file (default: script directory or user config dir)',
+    '  --data-dir <dir>   Directory for logs and captures (default: config file directory)',
+    '  --port <number>    Gateway port (default 8799)',
+    '  --mode <mode>      local | cloud',
+    '  -h, --help         Show this help',
+    '  -v, --version      Print the version',
     '',
-    'Ortam: PROXY_CFG, PROXY_DATA_DIR, PROXY_PORT, PROXY_MODE, OLLAMA_API_KEY',
+    'Environment: PROXY_CFG, PROXY_DATA_DIR, PROXY_PORT, PROXY_MODE, OLLAMA_API_KEY',
   ].join('\n');
 }
 
 function parseArgs(argv) {
   const out = { config: null, dataDir: null, port: null, mode: null, help: false, version: false };
   const value = (i, name) => {
-    if (i + 1 >= argv.length) throw new Error(name + ' icin deger gerekli');
+    if (i + 1 >= argv.length) throw new Error(name + ' requires a value');
     return argv[i + 1];
   };
   for (let i = 0; i < argv.length; i++) {
@@ -196,11 +198,11 @@ function parseArgs(argv) {
     else if (a.startsWith('--port=')) out.port = Number(a.slice('--port='.length));
     else if (a === '--mode') { out.mode = String(value(i, '--mode')).toLowerCase(); i++; }
     else if (a.startsWith('--mode=')) out.mode = a.slice('--mode='.length).toLowerCase();
-    else throw new Error('bilinmeyen secenek: ' + a);
+    else throw new Error('unknown option: ' + a);
   }
-  if (out.mode && !cfgMode(out.mode)) throw new Error('--mode local veya cloud olmali');
+  if (out.mode && !cfgMode(out.mode)) throw new Error('--mode must be local or cloud');
   if (out.port !== null && (!Number.isFinite(out.port) || out.port < 1 || out.port > 65535)) {
-    throw new Error('--port 1..65535 araliginda olmali');
+    throw new Error('--port must be between 1 and 65535');
   }
   return out;
 }
@@ -269,7 +271,7 @@ function sanitizeConfig(raw) {
       const b = cl.baseUrl.trim().replace(/\/+$/, '');
       d.cloud.baseUrl = /^https?:\/\//i.test(b) ? b : 'https://' + b;
       if (!parseBaseUrl(d.cloud.baseUrl)) {
-        warn.push('bulut adresi gecersiz, varsayilana donuldu');
+        warn.push('cloud base URL was invalid, the default was restored');
         d.cloud.baseUrl = DEFAULTS.cloud.baseUrl;
       }
     }
@@ -289,13 +291,13 @@ function sanitizeConfig(raw) {
       if (!r || typeof r !== 'object') continue;
       let mt = (r.maxTokens === null || r.maxTokens === undefined || r.maxTokens === '') ? null : Number(r.maxTokens);
       if (mt !== null && (!Number.isFinite(mt) || mt <= 0)) {
-        warn.push('geçersiz max_tokens alanlı kural atlandı');
+        warn.push('a rule with an invalid max_tokens value was skipped');
         continue;
       }
       const sys = typeof r.sysContains === 'string' ? r.sysContains.trim() : '';
-      let name = (typeof r.name === 'string' && r.name.trim()) ? r.name.trim() : ('kural-' + (d.blockRules.length + 1));
+      let name = (typeof r.name === 'string' && r.name.trim()) ? r.name.trim() : ('rule-' + (d.blockRules.length + 1));
       if (mt === null && !sys) {
-        warn.push('"' + name + '" kuralı koşulsuz olduğu için atlandı (her şeyi engellerdi)');
+        warn.push('rule "' + name + '" was skipped because it had no condition and would block everything');
         continue;
       }
       let nn = name, i = 2;
@@ -340,7 +342,7 @@ function saveConfigFile(c) {
     try { fs.chmodSync(CFG_FILE, 0o600); } catch (_) {}   // Windows'ta etkisiz
     return true;
   } catch (e) {
-    console.log('[config] yazilamadi: ' + e.message);
+    console.log('[config] could not be written: ' + e.message);
     return false;
   }
 }
@@ -397,8 +399,8 @@ function loadConfig(cfgPath) {
     raw = fs.readFileSync(CFG_FILE, 'utf8');
   } catch (e) {
     if (e.code !== 'ENOENT') {
-      // Okunamayan dosyayi ezme; bellekteki varsayilanlarla devam et.
-      console.log('[config] okunamadi (' + (e.code || '?') + '): ' + e.message);
+      // Do not overwrite an unreadable file; continue with in-memory defaults.
+      console.log('[config] could not be read (' + (e.code || '?') + '): ' + e.message);
       applyConfig(sanitizeConfig(deep(DEFAULTS)).config);
       return;
     }
@@ -406,21 +408,21 @@ function loadConfig(cfgPath) {
     const fresh = sanitizeConfig(boot || deep(DEFAULTS)).config;
     if (!fresh.admin.token) {
       fresh.admin.token = crypto.randomBytes(16).toString('hex');
-      console.log('[config] panel sifresi olusturuldu: ' + fresh.admin.token);
+      console.log('[config] generated admin password: ' + fresh.admin.token);
     }
     applyConfig(fresh);
-    if (saveConfigFile(fresh)) console.log('[config] olusturuldu: ' + CFG_FILE);
+    if (saveConfigFile(fresh)) console.log('[config] created: ' + CFG_FILE);
     return;
   }
   try {
     applyConfig(sanitizeConfig(JSON.parse(raw)).config);
   } catch (e) {
-    try { fs.copyFileSync(CFG_FILE, CFG_FILE.replace(/\.json$/, '') + '.bozuk.json'); } catch (_) {}
-    console.log('[config] dosya bozuk, varsayilanlarla yeniden kurdum (yedek: *.bozuk.json)');
+    try { fs.copyFileSync(CFG_FILE, CFG_FILE.replace(/\.json$/, '') + '.corrupt.json'); } catch (_) {}
+    console.log('[config] the file was invalid, it was rebuilt from defaults (backup: *.corrupt.json)');
     const fresh = sanitizeConfig(deep(DEFAULTS)).config;
     if (!fresh.admin.token) {
       fresh.admin.token = crypto.randomBytes(16).toString('hex');
-      console.log('[config] panel sifresi olusturuldu: ' + fresh.admin.token);
+      console.log('[config] generated admin password: ' + fresh.admin.token);
     }
     applyConfig(fresh);
     saveConfigFile(fresh);
@@ -448,9 +450,9 @@ function parseBaseUrl(raw) {
 
 function upstreamLabel(c) {
   if (isCloud(c)) {
-    try { return 'bulut ' + new URL(c.cloud.baseUrl).host; } catch (_) { return 'bulut'; }
+    try { return 'cloud ' + new URL(c.cloud.baseUrl).host; } catch (_) { return 'cloud'; }
   }
-  return 'yerel ' + c.local.host + ':' + c.local.port;
+  return 'local ' + c.local.host + ':' + c.local.port;
 }
 
 // Tek tasima noktasi: secili moda gore http (yerel) ya da https (bulut).
@@ -513,9 +515,9 @@ let upstreamMode = null;
 function upstreamCheckNow(c) {
   const conf = c || cfg;
   return new Promise((resolve) => {
-    if (!conf) return resolve({ up: false, reason: 'config yok' });
+    if (!conf) return resolve({ up: false, reason: 'no configuration' });
     if (isCloud(conf) && !conf.cloud.apiKey) {
-      upstreamUp = false; upstreamCheckedAt = Date.now(); upstreamReason = 'api anahtarı yok'; upstreamMode = conf.mode;
+      upstreamUp = false; upstreamCheckedAt = Date.now(); upstreamReason = 'API key missing'; upstreamMode = conf.mode;
       return resolve({ up: false, reason: upstreamReason });
     }
     const done = (up, reason) => {
@@ -539,7 +541,130 @@ function upstreamCheckNow(c) {
   });
 }
 
-// ---- Canli istatistik (panel "Genel" sekmesi; sadece proxy acilisindan beri) ----
+// ---- Upstream model discovery (panel "Models" tab) ----
+// Ollama exposes /api/tags on the daemon and on ollama.com. The result is
+// cached briefly so opening the panel does not hit the upstream on every tab
+// switch.
+const MODEL_CACHE_MS = 30000;
+let modelCache = { key: '', at: 0, models: [], error: '', source: '' };
+
+function upstreamKey(c) {
+  return isCloud(c) ? 'cloud:' + c.cloud.baseUrl : 'local:' + c.local.host + ':' + c.local.port;
+}
+
+function normalizeModelEntry(m) {
+  if (!m || typeof m !== 'object') return null;
+  const name = String(m.name || m.model || m.id || '').trim();
+  if (!name) return null;
+  const d = (m.details && typeof m.details === 'object') ? m.details : {};
+  const size = Number(m.size);
+  return {
+    name,
+    size: Number.isFinite(size) ? size : null,
+    modifiedAt: typeof m.modified_at === 'string' ? m.modified_at : null,
+    family: typeof d.family === 'string' ? d.family : '',
+    parameterSize: typeof d.parameter_size === 'string' ? d.parameter_size : '',
+    quantization: typeof d.quantization_level === 'string' ? d.quantization_level : '',
+  };
+}
+
+function fetchUpstreamModels(c, timeoutMs) {
+  return new Promise((resolve) => {
+    const source = isCloud(c) ? c.cloud.baseUrl : ('http://' + c.local.host + ':' + c.local.port);
+    const done = (models, error) => resolve({ ok: !error, models, error: error || '', source });
+    try {
+      const rq = upstreamRequest(c,
+        { path: '/api/tags', method: 'GET', headers: { accept: 'application/json' }, timeout: timeoutMs || 8000 },
+        (r) => {
+          const chunks = [];
+          let bytes = 0;
+          r.on('data', (ch) => { if (bytes < 4 * 1024 * 1024) { chunks.push(ch); bytes += ch.length; } });
+          r.on('end', () => {
+            if (r.statusCode === 401 || r.statusCode === 403) {
+              return done([], 'HTTP ' + r.statusCode + ' (API key rejected)');
+            }
+            let j = null;
+            try { j = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_) {}
+            if (!j) return done([], 'upstream returned no JSON (HTTP ' + r.statusCode + ')');
+            const list = Array.isArray(j.models) ? j.models
+              : Array.isArray(j.data) ? j.data
+                : Array.isArray(j) ? j : [];
+            const models = list.map(normalizeModelEntry).filter(Boolean)
+              .sort((a, b) => a.name.localeCompare(b.name));
+            done(models, models.length ? '' : 'the upstream returned no models');
+          });
+          r.on('error', () => done([], 'upstream read error'));
+        }
+      );
+      rq.on('error', (e) => done([], e.message));
+      rq.end();
+    } catch (e) { done([], e.message); }
+  });
+}
+
+function modelsFor(c, refresh) {
+  const key = upstreamKey(c);
+  if (!refresh && modelCache.key === key && (Date.now() - modelCache.at) < MODEL_CACHE_MS) {
+    return Promise.resolve(modelCache);
+  }
+  return fetchUpstreamModels(c).then((r) => {
+    modelCache = { key, at: Date.now(), models: r.models, error: r.error, source: r.source };
+    return modelCache;
+  });
+}
+
+function clearModelCache() {
+  modelCache = { key: '', at: 0, models: [], error: '', source: '' };
+}
+
+// A one-shot round trip through the active upstream and model map. Used by the
+// panel "Send a test message" button so a first-time user can see the whole
+// path work without wiring up a client.
+function sendTestMessage(c, modelHint) {
+  return new Promise((resolve) => {
+    const section = activeSection(c);
+    const model = resolveModelFor(section, modelHint || section.fallbackModel);
+    const body = Buffer.from(JSON.stringify({
+      model,
+      max_tokens: 16,
+      temperature: 0,
+      messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+    }), 'utf8');
+    const startedAt = Date.now();
+    const done = (ok, extra) => resolve({ ok, model, latencyMs: Date.now() - startedAt, ...extra });
+    try {
+      const rq = upstreamRequest(c, {
+        path: '/v1/messages',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': body.length,
+          accept: 'application/json',
+        },
+        timeout: 60000,
+      }, (r) => {
+        const chunks = [];
+        let bytes = 0;
+        r.on('data', (ch) => { if (bytes < 1024 * 1024) { chunks.push(ch); bytes += ch.length; } });
+        r.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let sample = '';
+          try {
+            const j = JSON.parse(text);
+            const block = Array.isArray(j.content) ? j.content.find((b) => b && b.type === 'text') : null;
+            sample = block && typeof block.text === 'string' ? block.text.slice(0, 200) : '';
+          } catch (_) { sample = text.slice(0, 200); }
+          if (r.statusCode >= 400) return done(false, { status: r.statusCode, error: text.slice(0, 300) });
+          done(true, { status: r.statusCode, sample });
+        });
+      });
+      rq.on('error', (e) => done(false, { status: 0, error: e.message }));
+      rq.end(body);
+    } catch (e) { done(false, { status: 0, error: e.message }); }
+  });
+}
+
+// ---- Live statistics (panel "Overview" tab; since process start only) ----
 const stats = { startedAt: Date.now(), total: 0, blocked: 0, counted: 0, errors: 0, inTok: 0, outTok: 0, recent: [] };
 function statPush(e, mode) {
   try {
@@ -553,7 +678,7 @@ function statPush(e, mode) {
 // ---- Teshis probe (varsayilan kapali) ----
 function writeProbe(line) {
   fs.appendFile(LOG_FILE, line + '\n', 'utf8', (e) => {
-    if (e) console.log('[probe-log] yazma hatasi: ' + e.message);
+    if (e) console.log('[probe-log] write failed: ' + e.message);
   });
 }
 
@@ -573,7 +698,7 @@ function maybeRotateLogs() {
     const old = USAGE_LOG.replace(/\.txt$/, '.1.txt');
     try { fs.unlinkSync(old); } catch (_) {}
     fs.renameSync(USAGE_LOG, old);
-    console.log('[log] usage-log donduruldu -> ' + old);
+    console.log('[log] usage-log rotated -> ' + old);
   } catch (_) {}
 }
 
@@ -639,9 +764,9 @@ function capPath(stamp, mode, bucket, name) {
   return path.join(CAP_DIR, `${stamp}_${mode}_${safe}_${name}`);
 }
 
-// SYSTEM_ADDON: iletilen her istegin system prompt'una sabit eklenen talimatlar.
+// SYSTEM_ADDON: instructions appended to the system prompt of every request.
 function addonText(c) {
-  return '# STIL TALIMATLARI (gateway eki)\n' + c.systemAddon.map((s) => '- ' + s).join('\n');
+  return '# STYLE INSTRUCTIONS (gateway addon)\n' + c.systemAddon.map((s) => '- ' + s).join('\n');
 }
 
 // Eki system'e uygular; system string, blok dizisi, tek blok veya tanimsiz olabilir.
@@ -798,7 +923,7 @@ function readBody(req, limit, cb) {
     if (done) return;
     size += ch.length;
     if (size > limit) {
-      const e = new Error('govde cok buyuk');
+      const e = new Error('request body too large');
       e.code = 'ETOOLARGE';
       return finish(e);
     }
@@ -806,12 +931,12 @@ function readBody(req, limit, cb) {
   });
   req.on('end', () => finish(null, Buffer.concat(chunks)));
   req.on('error', (e) => finish(e));
-  req.on('aborted', () => finish(new Error('istek iptal edildi')));
+  req.on('aborted', () => finish(new Error('request aborted')));
 }
 
 function bodyError(res, req, err) {
   const code = err && err.code === 'ETOOLARGE' ? 413 : 400;
-  const msg = code === 413 ? 'govde cok buyuk' : ('istek okunamadi: ' + (err && err.message));
+  const msg = code === 413 ? 'request body too large' : ('could not read the request: ' + (err && err.message));
   try {
     if (!res.headersSent) res.writeHead(code, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ type: 'error', error: { type: code === 413 ? 'request_too_large' : 'invalid_request_error', message: msg } }), () => {
@@ -867,7 +992,7 @@ function countTokens(req, res) {
       } catch (_) {}
       stats.counted++;
       stats.total++;
-      statPush({ st: 'sayım', mt: 0, inp: est, out: 0, dur: Date.now() - startedAt, bucket: 'ct' }, c.mode);
+      statPush({ st: 'count', mt: 0, inp: est, out: 0, dur: Date.now() - startedAt, bucket: 'ct' }, c.mode);
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ input_tokens: est }));
     }
@@ -940,7 +1065,7 @@ function forwardMessages(req, res) {
         probe.capStamp = stamp;
         try { fs.writeFileSync(capPath(stamp, probe.mode, probe.bucket, 'req.json'), raw, 'utf8'); } catch (_) {}
         recheckCapPaused();
-        console.log(`[loglama] ${probe.bucket} istek kaydedildi (${seen + 1}/${per})`);
+        console.log(`[capture] ${probe.bucket} request saved (${seen + 1}/${per})`);
       }
       outBody = Buffer.from(JSON.stringify(j), 'utf8');
     } catch (_) { /* JSON degil: aynen ilet */ }
@@ -949,7 +1074,7 @@ function forwardMessages(req, res) {
       const dur = Date.now() - startedAt;
       stats.blocked++;
       stats.total++;
-      statPush({ st: 'blok', mt: probe ? probe.maxTokens : null, inp: null, out: null, dur, bucket: probe ? probe.bucket : '?' }, c.mode);
+      statPush({ st: 'block', mt: probe ? probe.maxTokens : null, inp: null, out: null, dur, bucket: probe ? probe.bucket : '?' }, c.mode);
       console.log(`[blocked] ${rule} model=${modelWas} mt=${probe ? probe.maxTokens : '?'} dur=${dur}ms`);
       const sent = sendBlocked(parsed, res, rule, modelWas);
       if (probe) {
@@ -1010,7 +1135,7 @@ function forwardMessages(req, res) {
     upReq.on('error', (e) => {
       stats.errors++;
       const dur = Date.now() - startedAt;
-      statPush({ st: 'hata', mt: probe ? probe.maxTokens : null, inp: null, out: null, dur, bucket: probe ? probe.bucket : '?' }, c.mode);
+      statPush({ st: 'error', mt: probe ? probe.maxTokens : null, inp: null, out: null, dur, bucket: probe ? probe.bucket : '?' }, c.mode);
       if (!res.headersSent) res.writeHead(502);
       res.end('upstream error: ' + e.message);
     });
@@ -1044,6 +1169,38 @@ function publicConfig(c) {
   out.admin.token = '';
   out.admin.tokenSet = !!c.admin.token;
   return out;
+}
+
+// Portable export: no secrets and no panel-only helper flags.
+function portableConfig(c) {
+  const out = deep(c);
+  out.cloud.apiKey = '';
+  delete out.cloud.apiKeySet;
+  out.admin.token = '';
+  delete out.admin.tokenSet;
+  return out;
+}
+
+const CONFIG_KEYS = ['mode', 'port', 'upstreamTimeoutMs', 'local', 'cloud',
+                     'systemAddon', 'blockRules', 'titleFix', 'countTokens', 'logging'];
+
+function configDiff(a, b) {
+  return CONFIG_KEYS.filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));
+}
+
+// Reads a small JSON admin body; an empty body is treated as {}.
+function readJsonBody(req, res, limit, cb) {
+  readBody(req, limit, (err, raw) => {
+    if (err) {
+      const code = err.code === 'ETOOLARGE' ? 413 : 400;
+      return sendJson(res, code, { ok: false, error: err.message });
+    }
+    try {
+      cb(raw.length ? JSON.parse(raw.toString('utf8')) : {});
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: 'invalid JSON: ' + e.message });
+    }
+  });
 }
 
 function qparam(u, k) {
@@ -1107,7 +1264,7 @@ function serveFile(res, file, type) {
     res.end(data);
   } catch (_) {
     res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
-    res.end('<!doctype html><meta charset="utf-8"><body>dosya bulunamadi: ' + file + '</body>');
+    res.end('<!doctype html><meta charset="utf-8"><body>file not found: ' + file + '</body>');
   }
 }
 
@@ -1156,7 +1313,7 @@ function handleSaveConfig(req, res) {
   const ct = String(req.headers['content-type'] || '').toLowerCase();
   // Basit (preflight'siz) capraz kaynak POST'lari reddet: text/plain form saldirisi.
   if (!ct.startsWith('application/json')) {
-    return sendJson(res, 415, { ok: false, error: 'content-type application/json olmali' });
+    return sendJson(res, 415, { ok: false, error: 'content-type must be application/json' });
   }
   readBody(req, 2 * 1024 * 1024, (err, raw) => {
     if (err) {
@@ -1187,15 +1344,72 @@ function handleSaveConfig(req, res) {
       if (incoming && incoming.clearAdminToken === true) merged.admin.token = '';
       const { config, warnings } = sanitizeConfig(merged);
       if (!saveConfigFile(config)) {
-        return sendJson(res, 500, { ok: false, error: 'ayar dosyasi yazilamadi' });
+        return sendJson(res, 500, { ok: false, error: 'could not write the config file' });
       }
       applyConfig(config);
-      console.log('[config] panel ile guncellendi (mod: ' + config.mode + ', kurallar: ' + config.blockRules.length + ', addon: ' + config.systemAddon.length + ')');
+      clearModelCache();
+      console.log('[config] updated from the panel (mode: ' + config.mode + ', rules: ' + config.blockRules.length + ', addon: ' + config.systemAddon.length + ')');
       upstreamCheckNow(config);
       sendJson(res, 200, { ok: true, config: publicConfig(config), warnings });
     } catch (e) {
-      sendJson(res, 400, { ok: false, error: 'config okunamadi: ' + e.message });
+      sendJson(res, 400, { ok: false, error: 'invalid config: ' + e.message });
     }
+  });
+}
+
+// Imports a config file produced by the export action (or hand-written).
+// Secrets are never required: an empty secret field keeps the configured value.
+function handleImportConfig(req, res) {
+  const current = cfg;
+  readJsonBody(req, res, 2 * 1024 * 1024, (incoming) => {
+    const source = (incoming && typeof incoming === 'object' && incoming.config && typeof incoming.config === 'object')
+      ? incoming.config
+      : incoming;
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+      return sendJson(res, 400, { ok: false, error: 'the imported file must contain a config object' });
+    }
+    const { config, warnings } = sanitizeConfig(source);
+    if (!config.cloud.apiKey) config.cloud.apiKey = current.cloud.apiKey;
+    if (!config.admin.token) config.admin.token = current.admin.token;
+    if (source.clearApiKey === true) config.cloud.apiKey = '';
+    if (source.clearAdminToken === true) config.admin.token = '';
+    const changed = configDiff(current, config);
+    if (!saveConfigFile(config)) {
+      return sendJson(res, 500, { ok: false, error: 'could not write the config file' });
+    }
+    applyConfig(config);
+    clearModelCache();
+    upstreamCheckNow(config);
+    console.log('[config] imported from the panel (changed: ' + (changed.join(', ') || 'nothing') + ')');
+    sendJson(res, 200, { ok: true, config: publicConfig(config), warnings, changed });
+  });
+}
+
+// Restores the neutral defaults. The panel password is always kept or
+// regenerated, so a reset can never leave the panel open.
+function handleResetConfig(req, res) {
+  const current = cfg;
+  readJsonBody(req, res, 64 * 1024, (opt) => {
+    const keepSecrets = !opt || opt.keepSecrets !== false;
+    const fresh = sanitizeConfig(deep(DEFAULTS)).config;
+    let newAdminToken = null;
+    if (keepSecrets) {
+      fresh.cloud.apiKey = current.cloud.apiKey;
+      fresh.admin.token = current.admin.token;
+    } else if (!fresh.admin.token) {
+      fresh.admin.token = crypto.randomBytes(16).toString('hex');
+      newAdminToken = fresh.admin.token;
+      console.log('[config] generated admin password: ' + fresh.admin.token);
+    }
+    const changed = configDiff(current, fresh);
+    if (!saveConfigFile(fresh)) {
+      return sendJson(res, 500, { ok: false, error: 'could not write the config file' });
+    }
+    applyConfig(fresh);
+    clearModelCache();
+    upstreamCheckNow(fresh);
+    console.log('[config] reset to defaults (changed: ' + (changed.join(', ') || 'nothing') + ')');
+    sendJson(res, 200, { ok: true, config: publicConfig(fresh), warnings: [], changed, newAdminToken });
   });
 }
 
@@ -1217,7 +1431,7 @@ function handleAdmin(req, res) {
   if (!api.startsWith('/admin/api/')) {
     res.writeHead(404); return res.end('not found');
   }
-  if (!authed(req, c)) return sendJson(res, 401, { ok: false, error: 'panel şifresi gerekli' });
+  if (!authed(req, c)) return sendJson(res, 401, { ok: false, error: 'admin password required' });
   try {
     if (req.method === 'GET') {
       if (api === '/admin/api/config') return sendJson(res, 200, { ok: true, config: publicConfig(c) });
@@ -1254,10 +1468,40 @@ function handleAdmin(req, res) {
         const cap = readCaptures();
         return sendJson(res, 200, { ok: true, files: cap.files, total: cap.total, paused: capPaused });
       }
-      return sendJson(res, 404, { ok: false, error: 'bulunamadi' });
+      if (api === '/admin/api/models') {
+        const refresh = qparam(u, 'refresh') === '1';
+        return void modelsFor(c, refresh).then((r) => sendJson(res, 200, {
+          ok: true,
+          mode: c.mode,
+          source: r.source,
+          models: r.models,
+          count: r.models.length,
+          error: r.error,
+          checkedAt: r.at ? new Date(r.at).toISOString() : null,
+        }));
+      }
+      if (api === '/admin/api/config/export') {
+        return sendJson(res, 200, {
+          ok: true,
+          exportedAt: new Date().toISOString(),
+          version: VERSION,
+          secretsIncluded: false,
+          config: portableConfig(c),
+        });
+      }
+      return sendJson(res, 404, { ok: false, error: 'not found' });
     }
     if (req.method === 'POST') {
       if (api === '/admin/api/config') return handleSaveConfig(req, res);
+      if (api === '/admin/api/config/import') return handleImportConfig(req, res);
+      if (api === '/admin/api/config/reset') return handleResetConfig(req, res);
+      if (api === '/admin/api/test-message') {
+        readJsonBody(req, res, 64 * 1024, (body) => {
+          const hint = body && typeof body.model === 'string' ? body.model.trim() : '';
+          return void sendTestMessage(c, hint).then((r) => sendJson(res, 200, { ok: true, ...r }));
+        });
+        return;
+      }
       if (api === '/admin/api/log/clear') {
         try { fs.writeFileSync(USAGE_LOG, '', 'utf8'); } catch (_) {}
         return sendJson(res, 200, { ok: true });
@@ -1273,9 +1517,9 @@ function handleAdmin(req, res) {
           ok: true, up: r.up, reason: r.reason, mode: c.mode, label: upstreamLabel(c),
         }));
       }
-      return sendJson(res, 404, { ok: false, error: 'bulunamadi' });
+      return sendJson(res, 404, { ok: false, error: 'not found' });
     }
-    return sendJson(res, 404, { ok: false, error: 'bulunamadi' });
+    return sendJson(res, 404, { ok: false, error: 'not found' });
   } catch (e) {
     sendJson(res, 500, { ok: false, error: e.message });
   }
@@ -1324,7 +1568,7 @@ function createServer(appCfg, dataDir, cfgPath) {
 function main() {
   let args;
   try { args = parseArgs(process.argv.slice(2)); }
-  catch (e) { console.error('hata: ' + e.message + '\n\n' + usage()); process.exitCode = 2; return; }
+  catch (e) { console.error('error: ' + e.message + '\n\n' + usage()); process.exitCode = 2; return; }
   if (args.help) { console.log(usage()); return; }
   if (args.version) { console.log(VERSION); return; }
 
@@ -1336,7 +1580,7 @@ function main() {
   // komut satiri her ikisini de ezer.
   if (!cfg.cloud.apiKey && process.env.OLLAMA_API_KEY) {
     cfg.cloud.apiKey = String(process.env.OLLAMA_API_KEY).trim();
-    console.log('[config] API anahtari OLLAMA_API_KEY ortam degiskeninden alindi');
+    console.log('[config] API key taken from the OLLAMA_API_KEY environment variable');
   }
   const envMode = cfgMode(String(process.env.PROXY_MODE || '').toLowerCase());
   if (envMode) cfg.mode = envMode;
@@ -1348,34 +1592,34 @@ function main() {
   const server = createServer(cfg, paths.dataDir, paths.cfgPath);
   server.once('error', (e) => {
     if (e.code === 'EADDRINUSE') {
-      console.log(`[hata] port ${cfg.port} dolu. Eski proxy hala calisiyor olabilir.`);
+      console.log(`[error] port ${cfg.port} is already in use. Another gateway may still be running.`);
     } else {
-      console.log('[hata] ' + e.message);
+      console.log('[error] ' + e.message);
     }
     process.exitCode = 1;
   });
 
   server.listen(cfg.port, '127.0.0.1', () => {
     console.log(`ollama-gateway ${VERSION}`);
-    console.log(`proxy: http://127.0.0.1:${cfg.port}`);
-    console.log(`mod: ${cfg.mode}  (${upstreamLabel(cfg)})` + (cfg.mode === 'cloud'
-      ? `  api key: ${cfg.cloud.apiKey ? 'ayarli' : 'YOK - istekler 401 doner'}`
+    console.log(`gateway: http://127.0.0.1:${cfg.port}`);
+    console.log(`mode:    ${cfg.mode}  (${upstreamLabel(cfg)})` + (cfg.mode === 'cloud'
+      ? `  api key: ${cfg.cloud.apiKey ? 'set' : 'MISSING - requests will return 401'}`
       : ''));
     console.log('routes (' + cfg.mode + '):');
     for (const [k, v] of Object.entries(activeSection(cfg).modelMap)) console.log(`  ${k} -> ${v}`);
     console.log(`  (fallback) -> ${activeSection(cfg).fallbackModel}`);
-    console.log(`panel: http://127.0.0.1:${cfg.port}/admin` + (cfg.admin.token ? '  (sifreli)' : '  (sifresiz)'));
-    console.log(`config: ${CFG_FILE}`);
-    console.log(`veri: ${DATA_DIR}`);
-    console.log(`usage-log: ${cfg.logging.usageLog ? USAGE_LOG : 'KAPALI'}` +
-      `  (govde yakalama: ${cfg.logging.fullCapturePerBucket > 0 ? cfg.logging.fullCapturePerBucket + '/bucket' : 'kapali'}` +
-      `, prompt basi: ${cfg.logging.promptHeads ? 'acik' : 'kapali'})`);
+    console.log(`panel:   http://127.0.0.1:${cfg.port}/admin` + (cfg.admin.token ? '  (password protected)' : '  (no password)'));
+    console.log(`config:  ${CFG_FILE}`);
+    console.log(`data:    ${DATA_DIR}`);
+    console.log(`usage-log: ${cfg.logging.usageLog ? USAGE_LOG : 'OFF'}` +
+      `  (body capture: ${cfg.logging.fullCapturePerBucket > 0 ? cfg.logging.fullCapturePerBucket + '/bucket' : 'off'}` +
+      `, prompt heads: ${cfg.logging.promptHeads ? 'on' : 'off'})`);
     if (cfg.logging.fullCapturePerBucket > 0) {
-      console.log('[uyari] tam govde yakalama acik: istem ve yanitlar diskte duz metin tutulur -> ' + CAP_DIR);
+      console.log('[warning] full body capture is on: prompts and responses are stored as plain text -> ' + CAP_DIR);
     }
-    console.log(`count_tokens: ${cfg.countTokens.enabled ? 'lokal tahmin' : 'upstream e iletilir'}`);
-    console.log(`system-addon: ${cfg.systemAddon.length} talimat`);
-    console.log(`block-rules: ${cfg.blockRules.length} kural`);
+    console.log(`count_tokens: ${cfg.countTokens.enabled ? 'local estimate' : 'forwarded upstream'}`);
+    console.log(`system-addon: ${cfg.systemAddon.length} instruction(s)`);
+    console.log(`block-rules: ${cfg.blockRules.length} rule(s)`);
     maybeRotateLogs();
     upstreamCheckNow(cfg);
     setInterval(() => upstreamCheckNow(cfg), 30000);
@@ -1403,6 +1647,9 @@ module.exports = {
   resolveModelFor,
   sameToken,
   publicConfig,
+  portableConfig,
+  configDiff,
+  normalizeModelEntry,
   createServer,
   matchBlock,
   bucketOf,

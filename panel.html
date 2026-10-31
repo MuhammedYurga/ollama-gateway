@@ -1,250 +1,446 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Gateway Paneli</title>
+<meta name="robots" content="noindex">
+<title>ollama-gateway</title>
 <style>
-  :root { --bg:#10141a; --panel:#161c24; --panel2:#1b232d; --line:#262f3a; --tx:#e3e1d8; --mut:#8d97a3; --ac:#e0a458; --ok:#79b791; --bad:#d97066 }
+  :root {
+    --bg:#0f1319; --panel:#161c24; --panel2:#1b232d; --line:#26303b; --line2:#33404e;
+    --tx:#e6e3da; --mut:#94a0ad; --ac:#e0a458; --ac2:#f0bd77;
+    --ok:#7fbf96; --bad:#dd7a6e; --warn:#e0b25a;
+  }
   * { box-sizing:border-box }
   [hidden] { display:none !important }
-  body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.55 "Segoe UI",system-ui,sans-serif }
-  .wrap { max-width:1080px; margin:0 auto; padding:22px 22px 70px }
-  .hrow { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap }
-  h1 { font-size:20px; margin:0; font-weight:600 }
-  .sub { color:var(--mut); font-size:12.5px; margin-top:3px }
-  .chips { display:flex; gap:8px; align-items:center; flex-wrap:wrap }
-  .chip { border:1px solid var(--line); background:var(--panel); padding:4px 10px; border-radius:20px; font-size:12px; color:var(--mut) }
-  .chip.ok { color:var(--ok); border-color:rgba(121,183,145,.35) }
-  .chip.bad { color:var(--bad); border-color:rgba(217,112,102,.35) }
-  .chip.mode { color:var(--ac); border-color:rgba(224,164,88,.35) }
+  html { -webkit-text-size-adjust:100% }
+  body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif }
+  .wrap { max-width:1060px; margin:0 auto; padding:22px 22px 72px }
+  .skip { position:absolute; left:-9999px; top:0; background:var(--ac); color:#1c130a; padding:10px 16px; border-radius:0 0 8px 0; z-index:20; font-weight:600 }
+  .skip:focus { left:0 }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0 }
+
+  /* header */
+  .hrow { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap }
+  .brand h1 { font-size:20px; margin:0; font-weight:650; letter-spacing:.2px }
+  .brand h1 .ver { color:var(--mut); font-size:12px; font-weight:500; margin-left:8px }
+  .sub { color:var(--mut); font-size:12.5px; margin:4px 0 0; max-width:60ch }
+  .chips { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end }
+  .chip { border:1px solid var(--line); background:var(--panel); padding:5px 11px; border-radius:999px; font-size:12px; color:var(--mut); white-space:nowrap }
+  .chip.ok { color:var(--ok); border-color:rgba(127,191,150,.4) }
+  .chip.bad { color:var(--bad); border-color:rgba(221,122,110,.4) }
+  .chip.warn { color:var(--warn); border-color:rgba(224,178,90,.4) }
+  .chip.mode { color:var(--ac); border-color:rgba(224,164,88,.4) }
   button.chip { font:inherit; cursor:pointer }
-  button.chip:hover { color:var(--bad); border-color:var(--bad) }
-  .tabs { display:flex; gap:2px; margin-top:18px; border-bottom:1px solid var(--line); flex-wrap:wrap }
-  .tabs button { background:none; border:none; color:var(--mut); padding:9px 14px; font-size:13.5px; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; font:inherit }
+  button.chip:hover { color:var(--tx); border-color:var(--line2) }
+  .lang { display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; background:var(--panel) }
+  .lang button { background:none; border:none; color:var(--mut); font:inherit; font-size:12px; padding:5px 11px; cursor:pointer }
+  .lang button.on { background:var(--ac); color:#1c130a; font-weight:650 }
+
+  /* tabs */
+  .tabs { display:flex; gap:2px; margin-top:20px; border-bottom:1px solid var(--line); overflow-x:auto; scrollbar-width:none }
+  .tabs::-webkit-scrollbar { display:none }
+  .tabs button { background:none; border:none; color:var(--mut); padding:10px 14px; font:inherit; font-size:13.5px; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap }
   .tabs button:hover { color:var(--tx) }
   .tabs button.on { color:var(--tx); border-bottom-color:var(--ac) }
+  .tabs button:focus-visible { outline:2px solid var(--ac); outline-offset:-4px; border-radius:4px }
+
+  /* layout */
   section { padding-top:18px }
-  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px }
-  .tile b { display:block; font-size:20px; font-weight:600; font-variant-numeric:tabular-nums }
+  section:focus { outline:none }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-top:14px }
+  .cardhead { display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:6px }
+  h2 { font-size:15px; font-weight:640; margin:0 0 8px }
+  .cardhead h2 { margin:0 }
+  .note { color:var(--mut); font-size:12.5px; margin:8px 0 }
+  .note b { color:var(--tx); font-weight:600 }
+  .muted { color:var(--mut) }
+  .lbl { display:block; color:var(--mut); font-size:11.5px; margin-bottom:5px }
+
+  /* tiles */
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px }
+  .tile b { display:block; font-size:22px; font-weight:650; font-variant-numeric:tabular-nums; line-height:1.2 }
   .tile span { color:var(--mut); font-size:11.5px }
-  .note { color:var(--mut); font-size:12px; margin:8px 0 }
-  .lbl { color:var(--mut); font-size:11.5px; margin-bottom:4px }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-top:14px }
-  h2 { font-size:15px; font-weight:600; margin:0 0 8px }
+
+  /* setup checklist */
+  .checks { list-style:none; margin:6px 0 0; padding:0 }
+  .checks li { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); flex-wrap:wrap }
+  .checks li:last-child { border-bottom:none }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--line2); flex:0 0 auto }
+  .dot.ok { background:var(--ok) }
+  .dot.bad { background:var(--bad) }
+  .dot.warn { background:var(--warn) }
+  .checks .txt { flex:1 1 200px }
+  .checks .detail { color:var(--mut); font-size:12px; flex:1 1 100%; margin-left:20px }
+  .card.complete .checks, .card.complete #setupActions { display:none }
+
+  /* tables */
+  .tablewrap { overflow-x:auto; margin-top:6px }
   table { width:100%; border-collapse:collapse; font-size:13px }
-  th { text-align:left; color:var(--mut); font-weight:500; font-size:11.5px; padding:6px 8px; border-bottom:1px solid var(--line) }
-  td { padding:6px 8px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums }
-  tr:last-child td { border-bottom:none }
-  input,select,textarea { background:var(--panel2); border:1px solid var(--line); color:var(--tx); border-radius:6px; padding:6px 9px; font:inherit; font-size:13px; outline:none; width:100% }
+  caption { text-align:left }
+  th { text-align:left; color:var(--mut); font-weight:500; font-size:11.5px; padding:7px 8px; border-bottom:1px solid var(--line); white-space:nowrap }
+  td { padding:7px 8px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; vertical-align:middle }
+  tbody tr:last-child td { border-bottom:none }
+  td.empty { color:var(--mut); text-align:center; padding:18px 8px }
+  .badge { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; border:1px solid var(--line2); color:var(--mut); margin-right:4px }
+  .badge.ok { color:var(--ok); border-color:rgba(127,191,150,.4) }
+  .badge.bad { color:var(--bad); border-color:rgba(221,122,110,.4) }
+
+  /* forms */
+  input,select,textarea { background:var(--panel2); border:1px solid var(--line); color:var(--tx); border-radius:7px; padding:7px 10px; font:inherit; font-size:13px; outline:none; width:100%; min-height:36px }
   input:focus,select:focus,textarea:focus { border-color:var(--ac) }
-  input:focus-visible,button:focus-visible { outline:2px solid var(--ac); outline-offset:1px }
-  textarea { min-height:130px; resize:vertical; line-height:1.5 }
-  button.act { background:var(--ac); border:none; color:#1c130a; font:inherit; font-size:13px; font-weight:600; padding:7px 14px; border-radius:6px; cursor:pointer }
-  button.act:hover { filter:brightness(1.08) }
-  button.ghost { background:var(--panel2); border:1px solid var(--line); color:var(--tx); font:inherit; font-size:12.5px; padding:6px 12px; border-radius:6px; cursor:pointer }
-  button.ghost:hover { border-color:var(--ac) }
-  .rowbtn { display:flex; gap:10px; justify-content:flex-end; margin-top:12px }
-  label.chk { display:flex; gap:8px; align-items:center; color:var(--tx); font-size:13px; cursor:pointer; margin:10px 0 4px }
-  label.chk input { width:auto }
-  .fgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px 16px; margin-top:10px }
-  .mrow { display:flex; gap:8px; margin:8px 0; align-items:center }
-  .mrow input { flex:1 }
-  .mrow .arr { color:var(--mut) }
-  .rrow { display:flex; gap:8px; margin:8px 0; align-items:center; flex-wrap:wrap }
-  .rrow .rn { flex:0 0 160px }
-  .rrow .rmt { flex:0 0 130px }
-  .rrow .rsys { flex:1; min-width:230px }
-  .rrow input[type=checkbox] { width:auto }
-  .del { background:none; border:1px solid var(--line); color:var(--mut); border-radius:6px; cursor:pointer; padding:6px 10px; font:inherit; font-size:12.5px }
-  .del:hover { color:var(--bad); border-color:var(--bad) }
-  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel2); margin-top:6px }
-  .seg button { background:none; border:none; color:var(--mut); padding:8px 18px; font:inherit; font-size:13px; cursor:pointer }
+  input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible { outline:2px solid var(--ac); outline-offset:1px }
+  input.warn { border-color:var(--warn) }
+  textarea { min-height:140px; resize:vertical; line-height:1.5 }
+  input[type=checkbox] { width:auto; min-height:0 }
+  .fgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px 16px; margin-top:12px }
+  label.chk { display:flex; gap:9px; align-items:flex-start; color:var(--tx); font-size:13px; cursor:pointer; margin:10px 0 4px; line-height:1.4 }
+  label.chk input { margin-top:3px }
+  .chk small { display:block; color:var(--mut); font-size:11.5px }
+
+  button.act { background:var(--ac); border:none; color:#1c130a; font:inherit; font-size:13px; font-weight:650; padding:8px 16px; border-radius:7px; cursor:pointer; min-height:36px }
+  button.act:hover { background:var(--ac2) }
+  button.ghost { background:var(--panel2); border:1px solid var(--line); color:var(--tx); font:inherit; font-size:12.5px; padding:7px 13px; border-radius:7px; cursor:pointer; min-height:36px }
+  button.ghost:hover { border-color:var(--line2) }
+  button.ghost.danger { color:var(--bad) }
+  button.ghost.danger:hover { border-color:var(--bad) }
+  button:disabled { opacity:.5; cursor:not-allowed }
+  .rowbtn { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap }
+  .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px }
+
+  /* segmented control */
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--panel2); margin-top:6px }
+  .seg button { background:none; border:none; color:var(--mut); padding:8px 18px; font:inherit; font-size:13px; cursor:pointer; min-height:38px }
   .seg button:hover { color:var(--tx) }
-  .seg button.on { background:var(--ac); color:#1c130a; font-weight:600 }
-  pre { background:#0c1015; border:1px solid var(--line); border-radius:8px; padding:12px; font:12px/1.55 ui-monospace,Consolas,monospace; overflow:auto; max-height:400px; white-space:pre-wrap; word-break:break-all; color:#c6cdd6; margin:10px 0 0 }
-  .foot { color:var(--mut); font-size:11.5px; margin-top:24px; text-align:center }
-  .toast { position:fixed; bottom:18px; right:18px; background:var(--panel2); border:1px solid var(--ac); color:var(--tx); padding:9px 14px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:5 }
-  .toast.on { opacity:1 }
-  @media (prefers-reduced-motion: reduce) { .toast { transition:none } }
+  .seg button.on { background:var(--ac); color:#1c130a; font-weight:650 }
+
+  /* dynamic rows */
+  .mrow { display:grid; grid-template-columns:1fr 22px 1fr auto; gap:8px; align-items:center; margin:9px 0 }
+  .mrow .arr { color:var(--mut); text-align:center }
+  .rrow { display:grid; grid-template-columns:auto 1fr 110px 1.4fr auto; gap:8px; align-items:center; margin:9px 0 }
+  .rrow input[type=checkbox] { justify-self:center }
+  .del { background:none; border:1px solid var(--line); color:var(--mut); border-radius:7px; cursor:pointer; padding:7px 11px; font:inherit; font-size:12.5px; min-height:36px }
+  .del:hover { color:var(--bad); border-color:var(--bad) }
+  .rowhint { color:var(--warn); font-size:11.5px; grid-column:1/-1; margin:-4px 0 6px 0 }
+  @media (max-width:720px) {
+    .mrow { grid-template-columns:1fr; }
+    .mrow .arr { text-align:center; transform:rotate(90deg) }
+    .rrow { grid-template-columns:auto 1fr; }
+    .rrow .del { grid-column:1/-1; justify-self:end }
+    #modelTable th:nth-child(2), #modelTable td:nth-child(2),
+    #modelTable th:nth-child(3), #modelTable td:nth-child(3),
+    #modelTable th:nth-child(4), #modelTable td:nth-child(4) { display:none }
+  }
+
+  .statusline { font-size:12.5px; color:var(--mut); margin:10px 0; min-height:18px }
+  .statusline.ok { color:var(--ok) }
+  .statusline.bad { color:var(--bad) }
+  .statusline.warn { color:var(--warn) }
+  pre { background:#0b0f14; border:1px solid var(--line); border-radius:9px; padding:13px; font:12px/1.6 ui-monospace,Consolas,monospace; overflow:auto; max-height:380px; white-space:pre-wrap; word-break:break-word; color:#c8d0d9; margin:10px 0 0 }
+  .snippet { color:#d7cbb6; white-space:pre; word-break:normal }
+
+  .foot { color:var(--mut); font-size:11.5px; margin-top:28px; text-align:center }
+  .toast { position:fixed; bottom:18px; right:18px; left:18px; max-width:420px; margin-left:auto; background:var(--panel2); border:1px solid var(--ac); color:var(--tx); padding:11px 15px; border-radius:9px; font-size:13px; opacity:0; transform:translateY(6px); transition:opacity .22s, transform .22s; pointer-events:none; z-index:10 }
+  .toast.on { opacity:1; transform:translateY(0) }
+  .toast.bad { border-color:var(--bad) }
+  @media (prefers-reduced-motion: reduce) { .toast { transition:none; transform:none } }
+  @media (max-width:720px) {
+    .wrap { padding:16px 14px 64px }
+    .brand h1 { font-size:18px }
+    .chips { justify-content:flex-start }
+    .card { padding:14px }
+  }
 </style>
 </head>
 <body>
+<a class="skip" href="#main" data-i18n="a11y.skip">Skip to content</a>
 <div class="wrap">
 
-<header>
-  <div class="hrow">
-    <div>
-      <h1>Gateway Paneli</h1>
-      <div class="sub">Anthropic Messages API uyumlu istemcileri Ollama'ya bağlayan yerel geçit. Kaydettiğin ayarlar yeniden başlatmadan uygulanır.</div>
+<header class="hrow">
+  <div class="brand">
+    <h1>ollama-gateway <span class="ver" id="verNo"></span></h1>
+    <p class="sub" data-i18n="app.sub">A local gateway that lets Anthropic Messages API clients use Ollama models. Saved settings apply without a restart.</p>
+  </div>
+  <div class="chips">
+    <span class="chip mode" id="cMode">mode ?</span>
+    <span class="chip" id="cUpstream">upstream ?</span>
+    <span class="chip" id="cUptime" aria-hidden="true">?</span>
+    <div class="lang" role="group" aria-label="Language" id="langSeg">
+      <button type="button" data-lang="en">EN</button>
+      <button type="button" data-lang="tr">TR</button>
     </div>
-    <div class="chips">
-      <span class="chip mode" id="cMode">mod ?</span>
-      <span class="chip ok" id="cProxy">proxy çalışıyor</span>
-      <span class="chip" id="cOllama">bağlantı ?</span>
-      <span class="chip" id="cUptime">?</span>
-      <button class="chip" id="cLogout" type="button" hidden>oturumu kapat</button>
-    </div>
+    <button class="chip" id="cLogout" type="button" hidden data-i18n="app.logout">Sign out</button>
   </div>
 </header>
 
-<nav class="tabs" id="tabs">
-  <button data-t="genel" class="on">Genel</button>
-  <button data-t="modeller">Modeller</button>
-  <button data-t="engelleme">Engelleme</button>
-  <button data-t="stil">Stil eki</button>
-  <button data-t="loglar">Loglar</button>
-  <button data-t="ayarlar">Ayarlar</button>
+<nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
+  <button role="tab" id="tab-overview" aria-controls="s-overview" aria-selected="true" tabindex="0" class="on" data-t="overview" data-i18n="tab.overview">Overview</button>
+  <button role="tab" id="tab-models" aria-controls="s-models" aria-selected="false" tabindex="-1" data-t="models" data-i18n="tab.models">Models</button>
+  <button role="tab" id="tab-filters" aria-controls="s-filters" aria-selected="false" tabindex="-1" data-t="filters" data-i18n="tab.filters">Filters</button>
+  <button role="tab" id="tab-style" aria-controls="s-style" aria-selected="false" tabindex="-1" data-t="style" data-i18n="tab.style">Style addon</button>
+  <button role="tab" id="tab-logs" aria-controls="s-logs" aria-selected="false" tabindex="-1" data-t="logs" data-i18n="tab.logs">Logs</button>
+  <button role="tab" id="tab-settings" aria-controls="s-settings" aria-selected="false" tabindex="-1" data-t="settings" data-i18n="tab.settings">Settings</button>
 </nav>
 
-<section id="s-genel">
-  <div class="tiles" id="tiles"></div>
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0">Son istekler</h2>
-      <span class="note" style="margin:0" id="capNote"></span>
+<main id="main">
+
+<section id="s-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">
+
+  <div class="card" id="setupCard" hidden>
+    <div class="cardhead">
+      <h2 data-i18n="setup.title">Getting started</h2>
+      <button class="ghost" id="setupHide" data-i18n="setup.hide">Hide</button>
     </div>
-    <table>
-      <thead><tr><th>saat</th><th>mod</th><th>mt</th><th>giriş</th><th>çıkış</th><th>süre</th><th>bucket</th><th>sonuç</th></tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-    <div class="note">Sayılar proxy başlangıcından beri; bütün geçmiş usage-log.txt'de.</div>
-    <div style="margin-top:10px;gap:10px;display:flex;align-items:center;flex-wrap:wrap">
-      <button class="ghost" id="btnTest">Bağlantıyı test et</button>
-      <span id="testOut" class="note" style="margin:0"></span>
+    <p class="note" data-i18n="setup.note">Three steps take you from a fresh install to a working client.</p>
+    <ul class="checks">
+      <li><span class="dot" id="dotConn"></span><span class="txt" data-i18n="setup.step1">1. Reach the upstream</span></li>
+      <li class="detail" id="detConn"></li>
+      <li><span class="dot" id="dotMap"></span><span class="txt" data-i18n="setup.step2">2. Map the model name your client sends</span></li>
+      <li class="detail" id="detMap"></li>
+      <li><span class="dot" id="dotMsg"></span><span class="txt" data-i18n="setup.step3">3. Send a test message</span></li>
+      <li class="detail" id="detMsg"></li>
+    </ul>
+    <p class="note" id="setupDone" hidden></p>
+    <div class="rowbtn" id="setupActions"><button class="act" id="setupRun" data-i18n="setup.run">Run the checks</button></div>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <div class="cardhead">
+      <h2 data-i18n="client.title">Connect a client</h2>
+      <button class="ghost" id="copySnippet" data-i18n="client.copy">Copy</button>
+    </div>
+    <p class="note" data-i18n="client.note">Paste this into a terminal. Any client that accepts an Anthropic-compatible base URL works the same way.</p>
+    <pre class="snippet" id="snippet"></pre>
+  </div>
+
+  <div class="card">
+    <div class="cardhead">
+      <h2 data-i18n="recent.title">Recent requests</h2>
+      <span class="note" id="capNote" style="margin:0"></span>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <caption class="sr-only" data-i18n="recent.caption">Recent requests seen by the gateway</caption>
+        <thead><tr>
+          <th scope="col" data-i18n="recent.time">Time</th>
+          <th scope="col" data-i18n="recent.mode">Mode</th>
+          <th scope="col" data-i18n="recent.mt">Max tokens</th>
+          <th scope="col" data-i18n="recent.in">In</th>
+          <th scope="col" data-i18n="recent.out">Out</th>
+          <th scope="col" data-i18n="recent.dur">Duration</th>
+          <th scope="col" data-i18n="recent.bucket">Bucket</th>
+          <th scope="col" data-i18n="recent.result">Result</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="note" data-i18n="recent.note">Counters cover this process only. Full history is in usage-log.txt.</div>
+    <div class="toolbar">
+      <button class="ghost" id="btnTest" data-i18n="overview.testConn">Test the connection</button>
+      <span id="testOut" class="statusline" role="status" aria-live="polite"></span>
     </div>
   </div>
 </section>
 
-<section id="s-modeller" hidden>
+<section id="s-models" role="tabpanel" aria-labelledby="tab-models" tabindex="0" hidden>
   <div class="card">
-    <h2>Model eşleşmeleri</h2>
-    <div class="note">Sol taraf istemcinin gönderdiği model adı, sağ taraf Ollama'daki gerçek model. Eşleşmeyen adlar yedek modele düşer. Yerel ve bulut haritaları ayrı tutulur.</div>
-    <div class="seg" id="mmSeg">
-      <button data-m="local">Yerel</button>
-      <button data-m="cloud">Bulut</button>
+    <div class="cardhead">
+      <h2 data-i18n="models.title">Model maps</h2>
+      <button class="ghost" id="mmDiscover" data-i18n="models.discover">Discover models</button>
     </div>
-    <div class="note" id="mmNote"></div>
+    <p class="note" data-i18n="models.note">Left is the model name your client sends, right is the model the upstream serves. Unmapped names fall back to the fallback model. Local and cloud maps are separate.</p>
+    <div class="seg" id="mmSeg" role="group" aria-label="Model map">
+      <button type="button" data-m="local" data-i18n="mode.local">Local</button>
+      <button type="button" data-m="cloud" data-i18n="mode.cloud">Cloud</button>
+    </div>
+    <div class="statusline" id="mmStatus" role="status" aria-live="polite"></div>
     <div id="mrows"></div>
-    <button class="ghost" id="mAdd">Satır ekle</button>
-    <div class="fgrid" style="margin-top:16px">
+    <button class="ghost" id="mAdd" data-i18n="models.addRow">Add row</button>
+    <div class="fgrid">
       <div>
-        <div class="lbl">Yedek model</div>
-        <input type="text" id="fallback">
+        <label class="lbl" for="fallback" data-i18n="models.fallback">Fallback model</label>
+        <input type="text" id="fallback" list="modelList" autocomplete="off" spellcheck="false">
+        <datalist id="modelList"></datalist>
       </div>
     </div>
-    <div class="rowbtn"><button class="act" id="mSave">Kaydet</button></div>
+    <div class="rowbtn"><button class="act" id="mSave" data-i18n="common.save">Save</button></div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead">
+      <h2 data-i18n="discover.title">Models on the upstream</h2>
+      <span class="note" id="modelStatus" role="status" aria-live="polite" style="margin:0"></span>
+    </div>
+    <div class="tablewrap">
+      <table id="modelTable">
+        <caption class="sr-only" data-i18n="discover.caption">Models reported by the upstream</caption>
+        <thead><tr>
+          <th scope="col" data-i18n="discover.name">Name</th>
+          <th scope="col" data-i18n="discover.family">Family</th>
+          <th scope="col" data-i18n="discover.params">Parameters</th>
+          <th scope="col" data-i18n="discover.quant">Quantization</th>
+          <th scope="col" data-i18n="discover.size">Size</th>
+          <th scope="col"><span class="sr-only" data-i18n="discover.actions">Actions</span></th>
+        </tr></thead>
+        <tbody id="modelBody"></tbody>
+      </table>
+    </div>
+    <p class="note" data-i18n="discover.useNote">"Use" fills the next empty target field in the map above.</p>
   </div>
 </section>
 
-<section id="s-engelleme" hidden>
+<section id="s-filters" role="tabpanel" aria-labelledby="tab-filters" tabindex="0" hidden>
   <div class="card">
-    <h2>İstek filtreleri</h2>
-    <div class="note">Kurala uyan istek upstream'e gönderilmez, istemciye boş ama geçerli cevap döner. Varsayılan olarak kapalıdır; yalnızca ne yaptığını bildiğin durumlarda kullan. Dikkat: mt 8192 isteklerini filtreleme, istemci oturumu kendini durdurabilir.</div>
+    <h2 data-i18n="filters.title">Request filters</h2>
+    <p class="note" data-i18n="filters.note">A matching request is not sent upstream; the client receives a valid empty answer. Off by default. Do not filter requests with max_tokens 8192, because the client session may stop itself.</p>
     <div id="rrows"></div>
-    <button class="ghost" id="rAdd">Kural ekle</button>
-    <div class="rowbtn"><button class="act" id="rSave">Kaydet</button></div>
+    <button class="ghost" id="rAdd" data-i18n="filters.add">Add rule</button>
+    <div class="rowbtn"><button class="act" id="rSave" data-i18n="common.save">Save</button></div>
   </div>
 </section>
 
-<section id="s-stil" hidden>
+<section id="s-style" role="tabpanel" aria-labelledby="tab-style" tabindex="0" hidden>
   <div class="card">
-    <h2>Stil eki</h2>
-    <div class="note">Her isteğin system prompt'una eklenen talimatlar. Değiştirirsen bir sonraki istekte önbellek bir kez yeniden kurulur. Varsayılan olarak boştur.</div>
-    <textarea id="addon" placeholder="her satır bir talimat"></textarea>
-    <div class="rowbtn"><button class="act" id="aSave">Kaydet</button></div>
+    <h2 data-i18n="style.title">Style addon</h2>
+    <p class="note" data-i18n="style.note">Instructions appended to the system prompt of every request. Changing them rebuilds the prompt cache once. Empty by default.</p>
+    <label class="sr-only" for="addon" data-i18n="style.label">Instructions, one per line</label>
+    <textarea id="addon" spellcheck="false" data-i18n-ph="style.placeholder" placeholder="one instruction per line"></textarea>
+    <div class="rowbtn"><button class="act" id="aSave" data-i18n="common.save">Save</button></div>
   </div>
 </section>
 
-<section id="s-loglar" hidden>
+<section id="s-logs" role="tabpanel" aria-labelledby="tab-logs" tabindex="0" hidden>
   <div class="card">
-    <h2>usage-log</h2>
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+    <div class="cardhead">
+      <h2>usage-log</h2>
+      <span class="note" id="logNote" role="status" style="margin:0"></span>
+    </div>
+    <div class="toolbar" style="margin-top:0">
+      <label class="sr-only" for="logLines" data-i18n="logs.lines">Lines</label>
       <select id="logLines" style="width:auto"><option>200</option><option selected>500</option><option>1000</option></select>
-      <label class="chk" style="margin:0"><input type="checkbox" id="logAuto" checked> otomatik yenile</label>
-      <button class="ghost" id="lgRefresh">Yenile</button>
-      <span class="note" id="logNote" style="margin:0"></span>
-      <button class="ghost" style="margin-left:auto" id="lgClear">Logu temizle</button>
+      <label class="chk" style="margin:0"><input type="checkbox" id="logAuto" checked> <span data-i18n="logs.auto">Auto refresh</span></label>
+      <button class="ghost" id="lgRefresh" data-i18n="logs.refresh">Refresh</button>
+      <button class="ghost danger" style="margin-left:auto" id="lgClear" data-i18n="logs.clear">Clear log</button>
     </div>
-    <pre id="logTail">yüklüyor...</pre>
+    <pre id="logTail">...</pre>
   </div>
   <div class="card">
-    <h2>Yakalama dosyaları</h2>
-    <div id="capInfo" class="note">-</div>
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="ghost" id="capRefresh">Yenile</button>
-      <button class="ghost" id="capClear">Tümünü sil</button>
+    <div class="cardhead">
+      <h2 data-i18n="captures.title">Capture files</h2>
+      <span class="note" id="capInfo" style="margin:0">-</span>
+    </div>
+    <p class="note" data-i18n="captures.note">Full request and response bodies are written here only when body capture is enabled in Settings.</p>
+    <div class="toolbar">
+      <button class="ghost" id="capRefresh" data-i18n="logs.refresh">Refresh</button>
+      <button class="ghost danger" id="capClear" data-i18n="captures.clear">Delete all</button>
     </div>
   </div>
 </section>
 
-<section id="s-ayarlar" hidden>
+<section id="s-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+
   <div class="card">
-    <h2>İstek düzeltmeleri</h2>
-    <label class="chk"><input type="checkbox" id="tFixOn"> Başlık üretimi düzeltmesi (short session titles istekleri)</label>
-    <div class="fgrid">
-      <div><div class="lbl">system içinde geçen</div><input type="text" id="tFixSys"></div>
-      <div><div class="lbl">min token sayısı</div><input type="number" id="tFixMin"></div>
-    </div>
-    <label class="chk"><input type="checkbox" id="ctOn"> count_tokens isteklerini lokal tahminle yanıtla</label>
-    <div class="fgrid">
-      <div><div class="lbl">karakter / token katsayısı</div><input type="number" step="0.1" id="ctFactor"></div>
-    </div>
-  </div>
-  <div class="card">
-    <h2>Loglama</h2>
-    <label class="chk"><input type="checkbox" id="lgOn"> usage-log.txt yazımı</label>
-    <label class="chk"><input type="checkbox" id="lgPrompt"> log satırlarına system ve kullanıcı metni başlarını da yaz (gizlilik riski)</label>
-    <div class="fgrid">
-      <div><div class="lbl">bucket başına tam kayıt (0 kapalı)</div><input type="number" id="lgCap"></div>
-      <div><div class="lbl">captures dosya sınırı (0 yakalama kapalı)</div><input type="number" id="lgLimit"></div>
-      <div><div class="lbl">probe filtresi (0 kapalı)</div><input type="number" id="lgProbe"></div>
-    </div>
-  </div>
-  <div class="card">
-    <h2>Bağlantı yöntemi</h2>
-    <div class="note">İsteklerin hangi Ollama'ya gideceğini seçer. Kaydedince anında geçerli olur, proxy yeniden başlatılmaz.</div>
-    <div class="seg" id="modeSeg">
-      <button data-m="local">Yerel Ollama</button>
-      <button data-m="cloud">Ollama Cloud</button>
+    <h2 data-i18n="settings.connection">Connection</h2>
+    <p class="note" data-i18n="settings.connectionNote">Chooses which Ollama the requests go to. Saving applies immediately; the gateway does not restart.</p>
+    <div class="seg" id="modeSeg" role="group" aria-label="Connection mode">
+      <button type="button" data-m="local" data-i18n="settings.modeLocal">Local Ollama</button>
+      <button type="button" data-m="cloud" data-i18n="settings.modeCloud">Ollama Cloud</button>
     </div>
 
     <div id="localFields" class="fgrid">
-      <div><div class="lbl">Ollama adres</div><input type="text" id="olHost" placeholder="127.0.0.1"></div>
-      <div><div class="lbl">Ollama port</div><input type="number" id="olPort" placeholder="11434"></div>
+      <div><label class="lbl" for="olHost" data-i18n="settings.host">Ollama host</label><input type="text" id="olHost" placeholder="127.0.0.1" autocomplete="off" spellcheck="false"></div>
+      <div><label class="lbl" for="olPort" data-i18n="settings.port">Ollama port</label><input type="number" id="olPort" placeholder="11434" min="1" max="65535"></div>
     </div>
 
     <div id="cloudFields" class="fgrid" hidden>
-      <div><div class="lbl">Bulut adres</div><input type="text" id="clUrl" placeholder="https://ollama.com"></div>
+      <div><label class="lbl" for="clUrl" data-i18n="settings.baseUrl">Cloud base URL</label><input type="text" id="clUrl" placeholder="https://ollama.com" autocomplete="off" spellcheck="false"></div>
       <div>
-        <div class="lbl">API anahtarı <span id="clKeyState"></span></div>
-        <input type="password" id="clKey" autocomplete="off" placeholder="API anahtarı">
+        <label class="lbl" for="clKey"><span data-i18n="settings.apiKey">API key</span> <span id="clKeyState" class="muted"></span></label>
+        <input type="password" id="clKey" autocomplete="off" data-i18n-ph="settings.apiKeyPh" placeholder="API key">
       </div>
     </div>
-    <label class="chk" id="clKeyClearRow" hidden><input type="checkbox" id="clKeyClear"> Kayıtlı anahtarı sil</label>
+    <label class="chk" id="clKeyClearRow" hidden><input type="checkbox" id="clKeyClear"> <span data-i18n="settings.clearKey">Remove the stored API key</span></label>
 
-    <div class="fgrid" style="margin-top:14px">
-      <div><div class="lbl">Proxy portu (değişince proxy'yi yeniden başlat)</div><input type="number" id="pxPort"></div>
+    <div class="statusline" id="modeNote" role="status"></div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="settings.server">Gateway and panel</h2>
+    <div class="fgrid">
       <div>
-        <div class="lbl">Panel şifresi <span id="pwTokenState"></span></div>
-        <input type="password" id="pwToken" autocomplete="off" placeholder="panel şifresi (boş = şifresiz)">
+        <label class="lbl" for="pxPort" data-i18n="settings.portHint">Gateway port (restart needed when changed)</label>
+        <input type="number" id="pxPort" min="1" max="65535">
+      </div>
+      <div>
+        <label class="lbl" for="pwToken"><span data-i18n="settings.adminPassword">Panel password</span> <span id="pwTokenState" class="muted"></span></label>
+        <input type="password" id="pwToken" autocomplete="new-password" data-i18n-ph="settings.adminPasswordPh" placeholder="panel password (empty means no password)">
       </div>
     </div>
-    <label class="chk" id="pwTokenClearRow" hidden><input type="checkbox" id="pwTokenClear"> Kayıtlı panel şifresini sil</label>
+    <label class="chk" id="pwTokenClearRow" hidden><input type="checkbox" id="pwTokenClear"> <span data-i18n="settings.clearPassword">Remove the stored panel password</span></label>
+    <p class="note" data-i18n="settings.passwordNote">The panel keeps the password in this tab only. Closing the tab signs you out.</p>
+  </div>
 
-    <div class="note" id="modeNote"></div>
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px">
-      <button class="act" id="sSave">Kaydet</button>
-      <button class="ghost" id="sTest">Bağlantıyı test et</button>
-      <span id="sTestOut" class="note" style="margin:0"></span>
+  <div class="card">
+    <h2 data-i18n="settings.fixes">Request fixes</h2>
+    <label class="chk"><input type="checkbox" id="tFixOn"> <span data-i18n="settings.titleFix">Session title fix</span></label>
+    <p class="note" data-i18n="settings.titleFixNote">Drops thinking and raises a small max_tokens for title-generation requests, where some models otherwise return nothing.</p>
+    <div class="fgrid">
+      <div><label class="lbl" for="tFixSys" data-i18n="settings.titleFixMatch">System prompt contains</label><input type="text" id="tFixSys" spellcheck="false"></div>
+      <div><label class="lbl" for="tFixMin" data-i18n="settings.titleFixMin">Minimum max_tokens</label><input type="number" id="tFixMin" min="1"></div>
     </div>
-    <div class="note">Kaydet, bu sekmedeki bütün ayarları (düzeltmeler, loglama, bağlantı) yazar.</div>
+    <label class="chk"><input type="checkbox" id="ctOn"> <span data-i18n="settings.countTokens">Answer count_tokens locally</span></label>
+    <p class="note" data-i18n="settings.countTokensNote">Ollama does not implement the endpoint; the gateway estimates characters divided by the factor.</p>
+    <div class="fgrid">
+      <div><label class="lbl" for="ctFactor" data-i18n="settings.charsPerToken">Characters per token</label><input type="number" step="0.1" id="ctFactor" min="0.1"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="settings.logging">Logging</h2>
+    <label class="chk"><input type="checkbox" id="lgOn"> <span data-i18n="settings.usageLog">Write usage-log.txt</span></label>
+    <label class="chk"><input type="checkbox" id="lgPrompt"> <span data-i18n="settings.promptHeads">Also write the first 300 characters of the system and user text</span><small data-i18n="settings.promptHeadsNote">Privacy risk: prompt text reaches the log file.</small></label>
+    <div class="fgrid">
+      <div><label class="lbl" for="lgCap" data-i18n="settings.capturePerBucket">Full captures per bucket (0 is off)</label><input type="number" id="lgCap" min="0"></div>
+      <div><label class="lbl" for="lgLimit" data-i18n="settings.captureLimit">Capture file limit (0 stops capturing)</label><input type="number" id="lgLimit" min="0"></div>
+      <div><label class="lbl" for="lgProbe" data-i18n="settings.probe">Diagnostic probe (0 is off)</label><input type="number" id="lgProbe" min="0"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead">
+      <h2 data-i18n="settings.saveTitle">Save settings</h2>
+    </div>
+    <p class="note" data-i18n="settings.saveNote">Save writes every setting on this tab: connection, server, fixes and logging.</p>
+    <div class="toolbar">
+      <button class="act" id="sSave" data-i18n="common.save">Save</button>
+      <button class="ghost" id="sTest" data-i18n="overview.testConn">Test the connection</button>
+      <span id="sTestOut" class="statusline" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="configCard.title">Configuration file</h2>
+    <p class="note" data-i18n="configCard.note">Export never includes the API key or the panel password. Import accepts a file produced by Export, or a hand-written config.</p>
+    <div class="toolbar">
+      <button class="ghost" id="cfgExport" data-i18n="configCard.export">Export config</button>
+      <button class="ghost" id="cfgImport" data-i18n="configCard.import">Import config</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+    <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:12px">
+      <label class="chk" style="margin-top:0"><input type="checkbox" id="resetKeep" checked> <span data-i18n="configCard.keepSecrets">Keep the API key and panel password on reset</span></label>
+      <div class="toolbar"><button class="ghost danger" id="cfgReset" data-i18n="configCard.reset">Reset to defaults</button></div>
+    </div>
   </div>
 </section>
 
+</main>
+
 <div class="foot" id="foot"></div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/admin/panel.js"></script>
 </body>
 </html>
