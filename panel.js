@@ -1205,9 +1205,15 @@ async function init() {
   refreshLog();
   loadModels(false);
   setInterval(() => {
+    // A hidden tab does not need to poll; refresh once when it comes back.
+    if (document.hidden) return;
     refreshStatus(true);
     if (tab === 'logs' && $('logAuto').checked) refreshLog(true);
   }, 5000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshStatus(true);
+  });
 }
 
 init().catch((e) => toast(t('common.error', { e: e.message }), false));
