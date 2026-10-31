@@ -14,9 +14,9 @@
     "baseUrl": "https://ollama.com",
     "apiKey": "",
     "modelMap": {
-      "claude-opus-5": "gpt-oss:120b"
+      "claude-opus-5": "deepseek-v4.1-flash"
     },
-    "fallbackModel": "gpt-oss:120b"
+    "fallbackModel": "deepseek-v4.1-flash"
   },
   "systemAddon": [],
   "blockRules": [],

@@ -67,7 +67,7 @@ const DEFAULTS = {
     baseUrl: 'https://ollama.com',
     apiKey: '',                     // bos ise OLLAMA_API_KEY ortam degiskenine bakilir
     modelMap: {},
-    fallbackModel: 'gpt-oss:120b',
+    fallbackModel: 'deepseek-v4.1-flash',
   },
   systemAddon: [],
   blockRules: [],

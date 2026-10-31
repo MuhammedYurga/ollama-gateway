@@ -89,6 +89,11 @@ Pull the model you plan to map:
 ollama pull qwen3:8b
 ```
 
+For cloud models through the local daemon, run `ollama signin`; cloud model
+names use the `:cloud` suffix. For the direct Cloud API, no local install is
+needed: create an API key and use the names returned by
+`https://ollama.com/api/tags` (for example `deepseek-v4.1-flash`).
+
 ## API key
 
 Prefer entering the Ollama Cloud key in the admin panel, which stores it in the

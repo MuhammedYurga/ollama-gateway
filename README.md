@@ -5,7 +5,8 @@
 [![license](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 
 A small local gateway that lets clients speaking the Anthropic Messages API use
-Ollama models. It accepts `POST /v1/messages` (including streaming), answers
+Ollama models, whether they run on your machine or on Ollama Cloud. It accepts
+`POST /v1/messages` (including streaming), answers
 `POST /v1/messages/count_tokens` with a local estimate, and forwards
 `GET /v1/models` to the configured upstream.
 
@@ -32,9 +33,10 @@ resell access, or add a telemetry layer.
 
 - A single Node.js server file plus the admin panel assets; no runtime
   dependencies (Node 20+).
-- Two upstream modes, switchable at runtime from the admin panel:
-  - **local**: an Ollama daemon, for example `http://127.0.0.1:11434`
-  - **cloud**: `https://ollama.com` with your own Ollama API key
+- Two upstream paths, switchable at runtime from the admin panel:
+  - **local**: the Ollama daemon at `127.0.0.1:11434`; it can serve local
+    models and, after `ollama signin`, cloud models
+  - **cloud**: `https://ollama.com` with your own API key; no local install
 - Per-mode model maps: the model name your client sends (for example
   `claude-opus-5`) is translated to an Ollama model you choose.
 - A browser admin panel at `http://127.0.0.1:8799/admin` for connection mode,
@@ -55,8 +57,9 @@ resell access, or add a telemetry layer.
 
 - Node.js 20 or newer.
 - An Ollama upstream:
-  - local Ollama with `/v1/messages` support, or
-  - an Ollama Cloud account and API key for cloud mode.
+  - a local Ollama daemon with `/v1/messages` support, optionally signed in for
+    cloud models, or
+  - an Ollama Cloud account and API key for direct cloud mode.
 - A client that lets you set an Anthropic-compatible base URL.
 
 ## Platforms
@@ -97,17 +100,81 @@ panel: http://127.0.0.1:8799/admin  (sifreli)
 
 ## Quick start
 
-1. Start Ollama and pull a model, for example `ollama pull qwen3:8b`.
-2. Start the gateway.
-3. Open `http://127.0.0.1:8799/admin` and enter the generated password.
-4. In **Ayarlar > Bağlantı yöntemi**, choose **Yerel Ollama**, set the address
-   and port, then save.
-5. In **Modeller**, map the model name your client sends to your Ollama model,
-   for example `claude-opus-5 -> qwen3:8b`. Set the fallback model as well.
-6. Point your client at the gateway.
+The gateway can reach Ollama in two ways. The panel labels describe the
+connection path, not where the model runs: **Yerel Ollama** means "through the
+local Ollama daemon", and that daemon can serve local models and, when signed
+in, cloud models too.
 
-The admin panel is in Turkish. The HTTP API and the configuration file are
-language-neutral.
+| Path | Gateway mode | Local models | Cloud models | Requirements |
+| --- | --- | --- | --- | --- |
+| Local Ollama daemon | **Yerel Ollama**, `127.0.0.1:11434` | Yes, after `ollama pull` | Yes, after `ollama signin`, with `:cloud` names | Ollama installed |
+| Direct Ollama Cloud API | **Ollama Cloud**, `https://ollama.com` | No | Yes | Ollama account and API key; no local install |
+
+Model names and capabilities are listed at
+[ollama.com/search](https://ollama.com/search). The app and CLI use the
+`:cloud` suffix for cloud models, for example
+`deepseek-v4.1-flash:cloud`. The direct Cloud API uses the name returned by
+`GET https://ollama.com/api/tags`, for example `deepseek-v4.1-flash`. The API
+key is sent as `Authorization: Bearer`; the gateway does this for you and never
+forwards the client's `x-api-key`.
+
+Cloud availability and limits depend on your Ollama plan; local models depend
+on your hardware. The admin panel is in Turkish; the HTTP API and the
+configuration file are language-neutral.
+
+### Option A: Local Ollama daemon (local and cloud models)
+
+1. Install and start Ollama.
+2. For a local model, pull it:
+
+   ```bash
+   ollama pull qwen3:8b
+   ```
+
+3. For cloud models through the same daemon, sign in to ollama.com:
+
+   ```bash
+   ollama signin
+   ```
+
+   Cloud models then use the `:cloud` suffix, for example
+   `deepseek-v4.1-flash:cloud`.
+
+4. Start the gateway.
+5. Open `http://127.0.0.1:8799/admin` and enter the generated password.
+6. In **Ayarlar > Bağlantı yöntemi**, choose **Yerel Ollama**, keep
+   `127.0.0.1:11434`, and save. The local API needs no API key.
+7. In **Modeller**, map the model name your client sends to a model the daemon
+   can serve:
+   - local: `claude-opus-5 -> qwen3:8b`
+   - cloud: `claude-opus-5 -> deepseek-v4.1-flash:cloud`
+
+   Set the fallback model as well.
+8. Point your client at the gateway.
+
+### Option B: Direct Ollama Cloud API (API key)
+
+1. Create an Ollama account and API key at [ollama.com](https://ollama.com). No
+   local Ollama install or daemon is required. API keys do not expire; revoke
+   them from the Ollama settings page when necessary.
+2. Pick a cloud model from [ollama.com/search](https://ollama.com/search) and
+   confirm its API name:
+
+   ```bash
+   curl https://ollama.com/api/tags \
+     -H "Authorization: Bearer YOUR_API_KEY"
+   ```
+
+   The direct API uses that name, for example `deepseek-v4.1-flash`. The
+   `:cloud` suffix is the local app/CLI shorthand.
+3. Start the gateway.
+4. Open `http://127.0.0.1:8799/admin` and enter the generated password.
+5. In **Ayarlar > Bağlantı yöntemi**, choose **Ollama Cloud**, paste the API key,
+   keep `https://ollama.com`, and save.
+6. In **Modeller**, switch to **Bulut** and map the model name your client sends
+   to the API model, for example `claude-opus-5 -> deepseek-v4.1-flash`. Set the
+   fallback model as well.
+7. Point your client at the gateway.
 
 ### Claude Code
 
@@ -161,11 +228,11 @@ example. The important fields:
 | --- | --- |
 | `mode` | `local` or `cloud` |
 | `port` | Gateway port, default `8799` |
-| `local.host`, `local.port` | Ollama daemon address |
-| `local.modelMap`, `local.fallbackModel` | Model translation for local mode |
-| `cloud.baseUrl` | Ollama Cloud base URL, default `https://ollama.com` |
-| `cloud.apiKey` | Your Ollama Cloud key, or leave empty and set `OLLAMA_API_KEY` |
-| `cloud.modelMap`, `cloud.fallbackModel` | Model translation for cloud mode |
+| `local.host`, `local.port` | Local Ollama daemon; can serve `:cloud` models after `ollama signin` |
+| `local.modelMap`, `local.fallbackModel` | Model translation for the local daemon path (local or `:cloud` names) |
+| `cloud.baseUrl` | Direct Ollama Cloud API base URL, default `https://ollama.com` |
+| `cloud.apiKey` | API key for direct cloud mode, sent as Bearer. Not used by the local daemon path |
+| `cloud.modelMap`, `cloud.fallbackModel` | Model translation for direct cloud mode; use names from `/api/tags` |
 | `systemAddon` | Extra instructions appended to every `system` prompt (empty by default) |
 | `blockRules` | Local request filters, disabled by default |
 | `titleFix` | Compatibility fix for small title-generation requests |
