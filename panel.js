@@ -81,6 +81,7 @@ const STR = {
     'filters.systemContains': 'system prompt contains',
     'filters.delete': 'Remove',
     'filters.enabled': 'Rule enabled',
+    'filters.mtWarn': '8192 is the agent step request; filtering it can stop the client session',
     'style.title': 'Style addon',
     'style.note': 'Instructions appended to the system prompt of every request. Changing them rebuilds the prompt cache once. Empty by default.',
     'style.label': 'Instructions, one per line',
@@ -240,6 +241,7 @@ const STR = {
     'filters.systemContains': 'system içinde geçmeli',
     'filters.delete': 'Sil',
     'filters.enabled': 'Kural etkin',
+    'filters.mtWarn': '8192 ajan adım isteğidir; filtrelenirse istemci oturumu durabilir',
     'style.title': 'Stil eki',
     'style.note': 'Her isteğin system prompt una eklenen talimatlar. Değiştirirsen önbellek bir kez yeniden kurulur. Varsayılan olarak boş.',
     'style.label': 'Talimatlar, her satır bir tane',
@@ -794,6 +796,16 @@ function addRRow(r) {
   del.textContent = t('filters.delete');
   del.setAttribute('aria-label', t('filters.delete'));
   del.onclick = () => row.remove();
+
+  const mt = row.querySelector('.rmt');
+  const mark = () => {
+    const danger = Number(mt.value) === 8192;
+    row.classList.toggle('danger', danger);
+    mt.title = danger ? t('filters.mtWarn') : '';
+  };
+  mt.addEventListener('input', mark);
+  mark();
+
   $('rrows').appendChild(row);
 }
 
