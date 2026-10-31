@@ -46,6 +46,25 @@ no Ollama instance or API key is required.
 6. **Fail loud.** A misconfiguration should produce a clear error, not a silent
    fallback that looks successful.
 
+## Panel and translations
+
+The panel is English first. Static text lives in `panel.html` with a
+`data-i18n` key, and the two dictionaries at the top of `panel.js` hold the
+strings.
+
+To add or change a label:
+
+1. Add the element to `panel.html` with `data-i18n` for text or `data-i18n-ph`
+   for a placeholder.
+2. Add the same key to the `en` and `tr` objects in `panel.js`.
+3. Run `npm test`. `test/panel.test.js` fails when a key, an element id or a
+   translation is missing, when markup would break the strict CSP, or when the
+   English markup picks up Turkish-only characters.
+
+Dynamic text goes through `t('key', { name: value })`. Keep user data and model
+output out of the dictionaries. The panel is served with `script-src 'self'`,
+so no inline scripts and no inline event handlers.
+
 ## Tests
 
 - Add a test for every behavior change. Security fixes need a regression test.

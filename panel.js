@@ -69,6 +69,8 @@ const STR = {
     'discover.loading': 'Loading...',
     'discover.empty': 'No models reported',
     'discover.checked': '{n} model(s) · checked {t}',
+    'discover.filter': 'Filter by name or family',
+    'discover.noMatch': 'No model matches the filter',
     'filters.title': 'Request filters',
     'filters.note': 'A matching request is not sent upstream; the client receives a valid empty answer. Off by default. Do not filter requests with max_tokens 8192, because the client session may stop itself.',
     'filters.add': 'Add rule',
@@ -223,6 +225,8 @@ const STR = {
     'discover.loading': 'Yükleniyor...',
     'discover.empty': 'Model bildirilmedi',
     'discover.checked': '{n} model · kontrol {t}',
+    'discover.filter': 'Ada veya aileye göre filtrele',
+    'discover.noMatch': 'Filtreye uyan model yok',
     'filters.title': 'İstek filtreleri',
     'filters.note': 'Kurala uyan istek arka uca gönderilmez, istemciye boş ama geçerli cevap döner. Varsayılan olarak kapalı. max_tokens 8192 isteklerini filtreleme, istemci oturumu kendini durdurabilir.',
     'filters.add': 'Kural ekle',
@@ -329,6 +333,7 @@ let modeSel = 'local';
 let discovered = [];
 let modelsError = '';
 let modelsCheckedAt = null;
+let modelFilter = '';
 let lastMessageTest = null;
 
 function detectLang() {
@@ -655,7 +660,16 @@ function renderModelsTable() {
     $('modelList').innerHTML = '';
     return;
   }
-  body.innerHTML = discovered.map((m) => '<tr>' +
+  const q = modelFilter.trim().toLowerCase();
+  const visible = q
+    ? discovered.filter((m) => (m.name + ' ' + m.family).toLowerCase().includes(q))
+    : discovered;
+  if (!visible.length) {
+    body.innerHTML = '<tr><td class="empty" colspan="6">' + esc(t('discover.noMatch')) + '</td></tr>';
+    $('modelList').innerHTML = discovered.map((m) => '<option value="' + esc(m.name) + '"></option>').join('');
+    return;
+  }
+  body.innerHTML = visible.map((m) => '<tr>' +
     '<td><code>' + esc(m.name) + '</code></td>' +
     '<td>' + esc(m.family || '') + '</td>' +
     '<td>' + esc(m.parameterSize || '') + '</td>' +
@@ -929,6 +943,11 @@ $('mmSeg').addEventListener('click', (e) => {
 $('modelBody').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-use]');
   if (b) useModel(b.dataset.use);
+});
+
+$('modelFilter').addEventListener('input', (e) => {
+  modelFilter = e.target.value;
+  renderModelsTable();
 });
 
 $('cLogout').addEventListener('click', () => {
