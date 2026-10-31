@@ -2,6 +2,11 @@
 
 What changed and why.
 
+## Branch
+
+- [ ] Short-lived branch from `main` with a conventional prefix (`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, `test/`)
+- [ ] Squash merge; the title follows the commit rule
+
 ## Verification
 
 - [ ] `npm test`
